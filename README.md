@@ -280,4 +280,4 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
 
 ---
 
-*Built by [Brad Besner](https://github.com/bbesner) at [Ultraweb Labs](https://ultraweb.com). If this toolkit saves you time, give it a star and tell a friend.*
+*Built by [Brad Besner](https://github.com/bbesner) at [Ultraweb Labs](https://ultraweblabs.com). If this toolkit saves you time, give it a star and tell a friend.*
