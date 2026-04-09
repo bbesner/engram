@@ -1,24 +1,24 @@
-# Engram Architecture Reference
+# FlipClaw Architecture Reference
 
 **Version:** 3.0.0 | **Last updated:** 2026-04-09
 
-This document is a comprehensive technical deep-dive into Engram's internals. It covers every layer of the memory system, every pipeline stage, and every configuration surface. Read this if you want to understand exactly how Engram works before adopting it.
+This document is a comprehensive technical deep-dive into FlipClaw's internals. It covers every layer of the memory system, every pipeline stage, and every configuration surface. Read this if you want to understand exactly how FlipClaw works before adopting it.
 
 ---
 
 ## Overview
 
-Engram bridges Claude Code CLI with OpenClaw's memory infrastructure. It gives Claude Code persistent memory, automatic skill capture, nightly consolidation (Dreaming), semantic search, and a browsable knowledge wiki -- all backed by the same file-based memory system your OpenClaw agent already uses.
+FlipClaw bridges Claude Code CLI with OpenClaw's memory infrastructure. It gives Claude Code persistent memory, automatic skill capture, nightly consolidation (Dreaming), semantic search, and a browsable knowledge wiki -- all backed by the same file-based memory system your OpenClaw agent already uses.
 
 The core design principle is **shared memory**: both Claude Code sessions and OpenClaw agent sessions read from and write to the same set of Markdown files. Facts from Claude Code are tagged with `[src:claude-code]` for provenance, but otherwise flow through the same extraction, consolidation, and promotion pipeline as native agent facts.
 
-Engram has no database. Everything is Markdown, JSONL, and JSON -- human-readable, git-friendly, and grep-able.
+FlipClaw has no database. Everything is Markdown, JSONL, and JSON -- human-readable, git-friendly, and grep-able.
 
 ---
 
 ## Memory Layers
 
-Engram organizes memory into eight layers, ordered from rawest (ephemeral) to most curated (permanent).
+FlipClaw organizes memory into eight layers, ordered from rawest (ephemeral) to most curated (permanent).
 
 ### Layer 1: Session Transcripts
 

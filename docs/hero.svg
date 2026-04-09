@@ -12,14 +12,14 @@
   <rect width="940" height="580" rx="16" fill="#0d1117"/>
 
   <!-- Title -->
-  <text x="470" y="36" text-anchor="middle" font-family="Arial,sans-serif" font-size="28" font-weight="700" fill="#ffffff">Engram</text>
+  <text x="470" y="36" text-anchor="middle" font-family="Arial,sans-serif" font-size="28" font-weight="700" fill="#ffffff">FlipClaw</text>
   <text x="470" y="58" text-anchor="middle" font-family="Arial,sans-serif" font-size="13" fill="#9ca3af">Flip the architecture. Claude Code first. OpenClaw provides the brain.</text>
 
   <!-- ============================================ -->
-  <!-- LEFT PANEL: Traditional (Without Engram)     -->
+  <!-- LEFT PANEL: Traditional (Without FlipClaw)     -->
   <!-- ============================================ -->
   <rect x="20" y="78" width="430" height="310" rx="14" fill="#1a0f0f" stroke="#f8717133" stroke-width="1.5"/>
-  <text x="235" y="102" text-anchor="middle" font-family="Arial,sans-serif" font-size="12" font-weight="600" fill="#f87171" letter-spacing="1">WITHOUT ENGRAM</text>
+  <text x="235" y="102" text-anchor="middle" font-family="Arial,sans-serif" font-size="12" font-weight="600" fill="#f87171" letter-spacing="1">WITHOUT FLIPCLAW</text>
   <text x="235" y="118" text-anchor="middle" font-family="Arial,sans-serif" font-size="11" fill="#9ca3af">Claude runs inside OpenClaw — costs API rates</text>
 
   <!-- OpenClaw outer box (the harness) -->
@@ -54,10 +54,10 @@
   <text x="235" y="370" text-anchor="middle" font-family="Arial,sans-serif" font-size="11" fill="#f87171">OAuth changes = API billing for this setup</text>
 
   <!-- ============================================ -->
-  <!-- RIGHT PANEL: Engram (Claude Code First)      -->
+  <!-- RIGHT PANEL: FlipClaw (Claude Code First)      -->
   <!-- ============================================ -->
   <rect x="490" y="78" width="430" height="310" rx="14" fill="#0f1a1a" stroke="#4ade8033" stroke-width="1.5"/>
-  <text x="705" y="102" text-anchor="middle" font-family="Arial,sans-serif" font-size="12" font-weight="600" fill="#4ade80" letter-spacing="1">WITH ENGRAM</text>
+  <text x="705" y="102" text-anchor="middle" font-family="Arial,sans-serif" font-size="12" font-weight="600" fill="#4ade80" letter-spacing="1">WITH FLIPCLAW</text>
   <text x="705" y="118" text-anchor="middle" font-family="Arial,sans-serif" font-size="11" fill="#9ca3af">Claude Code is primary — OpenClaw wraps around it</text>
 
   <!-- Claude Code CLI (the primary interface, prominent) -->
@@ -70,12 +70,12 @@
   <rect x="775" y="151" width="50" height="22" rx="6" fill="#4ade8022"/>
   <text x="800" y="166" text-anchor="middle" font-family="Arial,sans-serif" font-size="9" font-weight="600" fill="#4ade80">Max $</text>
 
-  <!-- Arrow down from Claude Code to Engram bridge -->
+  <!-- Arrow down from Claude Code to FlipClaw bridge -->
   <line x1="705" y1="203" x2="705" y2="222" stroke="#6366f1" stroke-width="1.5" marker-end="url(#arr-a)"/>
 
-  <!-- Engram bridge (small connector) -->
+  <!-- FlipClaw bridge (small connector) -->
   <rect x="650" y="224" width="110" height="26" rx="8" fill="#6366f122" stroke="#6366f166" stroke-width="1"/>
-  <text x="705" y="241" text-anchor="middle" font-family="Arial,sans-serif" font-size="10" font-weight="600" fill="#a78bfa">Engram</text>
+  <text x="705" y="241" text-anchor="middle" font-family="Arial,sans-serif" font-size="10" font-weight="600" fill="#a78bfa">FlipClaw</text>
 
   <!-- Arrow down to OpenClaw infrastructure -->
   <line x1="705" y1="250" x2="705" y2="268" stroke="#6366f1" stroke-width="1.5" marker-end="url(#arr-a)"/>
@@ -158,7 +158,7 @@
   <text x="752" y="484" font-family="Arial,sans-serif" font-size="10" font-weight="600" fill="#38bdf8">Access</text>
 
   <!-- Bottom tagline -->
-  <text x="470" y="530" text-anchor="middle" font-family="Arial,sans-serif" font-size="12" fill="#6b7280">Claude Code is your interface. OpenClaw is the infrastructure. Engram connects them.</text>
+  <text x="470" y="530" text-anchor="middle" font-family="Arial,sans-serif" font-size="12" fill="#6b7280">Claude Code is your interface. OpenClaw is the infrastructure. FlipClaw connects them.</text>
 
   <!-- Deployment note -->
   <text x="470" y="552" text-anchor="middle" font-family="Arial,sans-serif" font-size="10" fill="#525252">Same machine or split across two (Claude Code local + OpenClaw remote via MCP) — your choice.</text>

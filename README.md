@@ -1,12 +1,12 @@
-# Engram
+# FlipClaw
 
 **Persistent memory, auto-generated skills, and scheduled automation for Claude Code CLI — powered by OpenClaw.**
 
-> Your Claude Max subscription gives you Claude Code CLI. Engram gives it a brain that persists across sessions, learns from every conversation, and runs tasks while you sleep.
+> Your Claude Max subscription gives you Claude Code CLI. FlipClaw gives it a brain that persists across sessions, learns from every conversation, and runs tasks while you sleep.
 
 <p align="center">
-  <a href="https://raw.githubusercontent.com/bbesner/engram/main/docs/hero.svg">
-    <img src="docs/hero.svg" alt="Engram — Before and After" width="900">
+  <a href="https://raw.githubusercontent.com/bbesner/flipclaw/main/docs/hero.svg">
+    <img src="docs/hero.svg" alt="FlipClaw — Before and After" width="900">
   </a>
 </p>
 
@@ -24,9 +24,9 @@ The catch? Claude Code has no memory. Every session starts from zero — no reca
 
 ## The Solution: Turn the Tables
 
-Instead of putting Claude Code inside OpenClaw as its model, Engram flips it — **Claude Code is now the primary interface, and OpenClaw wraps around it** to provide the persistent infrastructure.
+Instead of putting Claude Code inside OpenClaw as its model, FlipClaw flips it — **Claude Code is now the primary interface, and OpenClaw wraps around it** to provide the persistent infrastructure.
 
-Engram flips the architecture. **Claude Code CLI is now the primary interface.** OpenClaw wraps around it to provide persistent memory, scheduled automation, heartbeats, and 24/7 capabilities — but you're working fully inside Claude Code. VS Code, Claude Code Desktop, CLI terminal — wherever you prefer.
+FlipClaw flips the architecture. **Claude Code CLI is now the primary interface.** OpenClaw wraps around it to provide persistent memory, scheduled automation, heartbeats, and 24/7 capabilities — but you're working fully inside Claude Code. VS Code, Claude Code Desktop, CLI terminal — wherever you prefer.
 
 **This is Claude Code first.** OpenClaw isn't the harness running Claude anymore. It's the infrastructure layer that gives Claude Code superpowers it doesn't have natively. Your conversations, your coding, your daily work — all happening in Claude Code on your Max subscription. OpenClaw provides the memory brain, the cron jobs, the skill library, and the remote access layer around it.
 
@@ -90,8 +90,8 @@ Claude Code CLI                    OpenClaw Agent
 ### Install
 
 ```bash
-git clone https://github.com/bbesner/engram.git
-cd engram
+git clone https://github.com/bbesner/flipclaw.git
+cd flipclaw
 
 # Full install (memory system + Claude Code hooks)
 bash install.sh \
