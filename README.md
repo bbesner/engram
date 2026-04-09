@@ -16,13 +16,13 @@
 
 ## The Problem
 
-Claude Code CLI is the most capable AI coding tool available. But every session starts from zero — no memory of yesterday's work, no recall of your infrastructure, no awareness of decisions you've already made.
+Claude Code CLI is the most capable AI coding tool available. But every session starts from zero — no memory of yesterday's work, no recall of your infrastructure, no awareness of decisions you've already made, and no automations.
 
 Meanwhile, Anthropic's recent OAuth changes mean running Claude through third-party harnesses (like OpenClaw) now incurs API rates or extra usage billing. Claude Code CLI still works on your flat-rate Max subscription — but it lacks the persistent infrastructure that makes an AI assistant truly useful.
 
 ## The Solution
 
-This toolkit bridges Claude Code CLI with OpenClaw's memory and automation infrastructure. The result:
+This toolkit turns the tables, instead of Openclaw using claude code for it's model, Claude Code now uses OpenClaw and Engram bridges Claude Code CLI with OpenClaw's memory and automation infrastructure. The result:
 
 - **Persistent memory** shared between Claude Code and your OpenClaw agent — same knowledge base, regardless of which interface you use
 - **Auto-generated skills** — multi-step procedures are captured automatically and reused across sessions
