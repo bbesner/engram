@@ -16,23 +16,31 @@
 
 ## The Problem
 
-Claude Code CLI is the most capable AI coding tool available. But every session starts from zero — no memory of yesterday's work, no recall of your infrastructure, no awareness of decisions you've already made, and no automations.
+If you're running Claude through a third-party harness like OpenClaw, Anthropic's recent OAuth changes mean those conversations now cost API rates or extra usage billing. Your flat-rate Max subscription no longer covers it.
 
-Meanwhile, Anthropic's recent OAuth changes mean running Claude through third-party harnesses (like OpenClaw) now incurs API rates or extra usage billing. Claude Code CLI still works on your flat-rate Max subscription — but it lacks the persistent infrastructure that makes an AI assistant truly useful.
+But **Claude Code CLI still works on Max.** It's not just the best coding AI — it's the best agentic AI interface available, period. VS Code, Claude Code Desktop, or the terminal. Included in your subscription, no API metering.
 
-## The Solution
+The catch? Claude Code has no memory. Every session starts from zero — no recall of your infrastructure, no awareness of decisions you've already made, and no automations.
 
-This toolkit turns the tables, instead of Openclaw using claude code for it's model, Claude Code now uses OpenClaw and Engram bridges Claude Code CLI with OpenClaw's memory and automation infrastructure. The result:
+## The Solution: Turn the Tables
 
-- **Persistent memory** shared between Claude Code and your OpenClaw agent — same knowledge base, regardless of which interface you use
-- **Auto-generated skills** — multi-step procedures are captured automatically and reused across sessions
-- **Built-in Dreaming** — your AI consolidates and promotes important facts while you're away
-- **Memory Wiki** — organized, browsable knowledge vault with backlinks
+Instead of putting Claude Code inside OpenClaw as its model, Engram flips it — **Claude Code is now the primary interface, and OpenClaw wraps around it** to provide the persistent infrastructure.
+
+Engram flips the architecture. **Claude Code CLI is now the primary interface.** OpenClaw wraps around it to provide persistent memory, scheduled automation, heartbeats, and 24/7 capabilities — but you're working fully inside Claude Code. VS Code, Claude Code Desktop, CLI terminal — wherever you prefer.
+
+**This is Claude Code first.** OpenClaw isn't the harness running Claude anymore. It's the infrastructure layer that gives Claude Code superpowers it doesn't have natively. Your conversations, your coding, your daily work — all happening in Claude Code on your Max subscription. OpenClaw provides the memory brain, the cron jobs, the skill library, and the remote access layer around it.
+
+What you get:
+
+- **Persistent memory** that survives across sessions — shared between Claude Code and your OpenClaw agent. Same brain, doesn't matter which interface you use.
+- **Auto-skill capture** — when you do something complex, the system automatically generates a reusable skill document so next time Claude already knows the procedure
+- **Dreaming** — nightly consolidation that deduplicates facts, promotes important knowledge, and detects patterns across your sessions
+- **Memory Wiki** — a browsable, backlinked knowledge vault
 - **Cron jobs, heartbeats, and scheduled tasks** via OpenClaw, accessible from Claude Code
-- **Remote access via Telegram** with multi-session support (pair with [claude-telegram-relay](https://github.com/bbesner/claude-telegram-relay))
-- **Works from anywhere** — server, laptop, phone — all hitting the same memory
+- **Remote access via Telegram** — multi-session Claude Code from your phone, not limited to Anthropic's single QR-code session (pair with [claude-telegram-relay](https://github.com/bbesner/claude-telegram-relay))
+- **Flexible deployment** — Claude Code and OpenClaw on the same machine (local, server, or VPS) for the tightest integration, or split across two machines with the MCP server connection. Same shared memory either way.
 
-All on your existing Claude Max subscription.
+All on your existing Claude Max subscription. No API charges.
 
 ## How It Works
 
