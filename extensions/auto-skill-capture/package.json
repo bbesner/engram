@@ -1,0 +1,10 @@
+{
+  "name": "auto-skill-capture",
+  "version": "0.1.0",
+  "description": "Automatically captures reusable skills from completed agent sessions",
+  "main": "index.ts",
+  "private": true,
+  "engines": {
+    "node": ">=18"
+  }
+}

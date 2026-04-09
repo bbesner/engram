@@ -1,0 +1,61 @@
+
+## ⚠️ CRITICAL: Memory System — {{AGENT_NAME}} Is the Single Source of Truth
+
+**Do NOT use Claude Code's built-in memory system** (`~/.claude/projects/*/memory/`). {{AGENT_NAME}}'s memory is the single source of truth for all knowledge — people, infrastructure, credentials, business rules, decisions, and project context.
+
+**Do NOT write directly to {{AGENT_NAME}}'s memory files.** The capture pipeline handles persistence automatically via the `SessionEnd` hook.
+
+### How the integration works
+
+**Write side (automatic):** A `SessionEnd` hook runs `scripts/claude-code-bridge.py` after each Claude Code session. It converts the session JSONL (including tool call metadata) and drops it into `agents/{{SESSION_SOURCE}}/sessions/`. The memory capture pipeline picks it up, extracts facts, and feeds them into the shared memory system. `memory-core` then handles recall, indexing, and Dreaming-based longer-term consolidation and promotion.
+
+**Read side (use these):**
+
+**Prefer semantic search for fuzzy/conceptual queries:**
+```bash
+cd {{WORKSPACE}} && OPENCLAW_CONFIG_PATH={{WORKSPACE}}/openclaw.json openclaw memory search "your query here" --max-results 5
+```
+This uses Gemini-powered hybrid search (70% semantic + 30% keyword) across all memory files, daily logs, and session transcripts. Use this when searching by meaning — e.g., "what was decided about pricing," "recent configuration changes."
+
+**Use grep for exact keyword lookups:**
+```bash
+grep -rli "keyword" {{WORKSPACE}}/memory/
+grep -rli "keyword" {{WORKSPACE}}/skills/*/SKILL.md
+```
+
+**Read files directly when you know what you need:**
+- `{{WORKSPACE}}/MEMORY.md` — curated core knowledge (read this first for any task)
+- `{{WORKSPACE}}/memory/*.md` — structured reference files by topic
+- `{{WORKSPACE}}/memory/YYYY-MM-DD.md` — daily logs (today's file has freshest context)
+- `{{WORKSPACE}}/skills/*/SKILL.md` — all skills (hand-crafted and auto-captured) in one directory
+
+**Check for existing skills before multi-step work:**
+```bash
+grep -rli "keyword" {{WORKSPACE}}/skills/*/SKILL.md
+```
+If a relevant skill exists, **follow it** rather than figuring out the procedure from scratch. Skills capture verified procedures including pitfalls and verification steps.
+
+**Flag a session as important (force skill capture):**
+```bash
+touch /tmp/agent-priority-$(cat /tmp/claude-session-id 2>/dev/null || echo "manual")
+```
+
+**Manually create a skill:**
+```bash
+mkdir -p {{WORKSPACE}}/skills/{slug}
+# Write SKILL.md with procedure, prerequisites, verification, pitfalls
+```
+
+### Rule: Always check {{AGENT_NAME}}'s memory before:
+- Asking the user for information that might already be documented
+- Guessing at credentials, ports, paths, or configurations
+- Starting work on any system you haven't touched before
+- Making assumptions about business rules or preferences
+
+## Post-Update Health Check
+
+After any Claude Code CLI update, run the integration health check:
+```bash
+bash {{WORKSPACE}}/scripts/claude-code-update-check.sh
+```
+<!-- END CLAUDE-CODE-MEMORY-INTEGRATION -->

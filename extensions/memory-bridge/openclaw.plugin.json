@@ -1,0 +1,14 @@
+{
+  "id": "memory-bridge",
+  "name": "Memory Bridge",
+  "version": "1.0.0",
+  "description": "Post-turn memory capture — extracts durable facts from each conversation turn into daily logs and session cache.",
+  "entry": "./index.ts",
+  "configSchema": {
+    "type": "object",
+    "additionalProperties": true,
+    "properties": {
+      "enabled": { "type": "boolean", "default": true }
+    }
+  }
+}

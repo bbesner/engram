@@ -1,0 +1,82 @@
+{
+  "id": "auto-skill-capture",
+  "name": "Auto Skill Capture",
+  "version": "0.1.0",
+  "description": "Automatically captures reusable skills from completed agent sessions.",
+  "entry": "./index.ts",
+  "configSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "captureEnabled": {
+        "type": "boolean",
+        "default": true,
+        "description": "Enable post-session skill extraction"
+      },
+      "recallEnabled": {
+        "type": "boolean",
+        "default": true,
+        "description": "Enable pre-turn skill recall injection"
+      },
+      "outputDir": {
+        "type": "string",
+        "default": "skills/auto-captured",
+        "description": "Directory for captured skill files (relative to workspace)"
+      },
+      "extractionModel": {
+        "type": "string",
+        "default": "gpt-5.4-nano",
+        "description": "Model for classification gate (cheap)"
+      },
+      "generationModel": {
+        "type": "string",
+        "default": "gpt-5.4-mini",
+        "description": "Model for skill document generation"
+      },
+      "provider": {
+        "type": "string",
+        "enum": ["openai", "anthropic"],
+        "default": "openai"
+      },
+      "complexity": {
+        "type": "object",
+        "properties": {
+          "minToolCalls": { "type": "number", "default": 5 },
+          "minUserTurns": { "type": "number", "default": 2 },
+          "minTranscriptChars": { "type": "number", "default": 3000 },
+          "scoreThreshold": { "type": "number", "default": 30 }
+        }
+      },
+      "recall": {
+        "type": "object",
+        "properties": {
+          "maxResults": { "type": "number", "default": 3 },
+          "minConfidence": { "type": "number", "default": 0.5 },
+          "maxInjectionTokens": { "type": "number", "default": 1500 },
+          "onlyFirstTurn": { "type": "boolean", "default": true }
+        }
+      },
+      "quality": {
+        "type": "object",
+        "properties": {
+          "maxSkills": { "type": "number", "default": 200 },
+          "pruneAfterDays": { "type": "number", "default": 90 },
+          "pruneIfUnused": { "type": "boolean", "default": true },
+          "deduplicationThreshold": { "type": "number", "default": 0.6 }
+        }
+      },
+      "skipAgents": {
+        "type": "array",
+        "items": { "type": "string" },
+        "default": [],
+        "description": "Agent IDs to exclude from capture"
+      },
+      "skipSessionPatterns": {
+        "type": "array",
+        "items": { "type": "string" },
+        "default": ["^cron:", "^heartbeat", "^hook:"],
+        "description": "Session key patterns to skip"
+      }
+    }
+  }
+}

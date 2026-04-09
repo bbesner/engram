@@ -1,0 +1,14 @@
+{
+  "name": "openclaw-memory-mcp",
+  "version": "1.0.0",
+  "description": "MCP server exposing OpenClaw agent memory for remote Claude Code access",
+  "main": "server.mjs",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "start": "node server.mjs"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.0.0"
+  }
+}

@@ -1,0 +1,84 @@
+# {{AGENT_NAME}} Memory Integration — Claude Code CLI
+
+**Installed:** {{DATE}} | **Toolkit version:** See {{WORKSPACE}}/.toolkit-version
+
+## CRITICAL: Memory System — {{AGENT_NAME}} Is the Single Source of Truth
+
+**Do NOT use Claude Code's built-in memory system** (`~/.claude/projects/*/memory/`). {{AGENT_NAME}}'s memory is the single source of truth for all knowledge.
+
+**Do NOT write directly to {{AGENT_NAME}}'s memory files.** The capture pipeline handles persistence automatically via the `SessionEnd` hook.
+
+### How the integration works
+
+**Write side (automatic):** A `SessionEnd` hook runs the bridge script after each Claude Code session. It converts the session JSONL (including tool call metadata) and drops it into `agents/{{SESSION_SOURCE}}/sessions/`. The memory capture pipeline picks it up, extracts facts, and promotes them through the standard pipeline.
+
+**Read side (use these):**
+
+**Prefer semantic search for fuzzy/conceptual queries:**
+```bash
+cd {{WORKSPACE}} && OPENCLAW_CONFIG_PATH={{WORKSPACE}}/openclaw.json openclaw memory search "your query here" --max-results 5
+```
+
+**Use grep for exact keyword lookups:**
+```bash
+grep -rli "keyword" {{WORKSPACE}}/skills/*/SKILL.md
+grep -rli "keyword" {{WORKSPACE}}/memory/
+```
+
+**Read files directly when you know what you need:**
+- `{{WORKSPACE}}/MEMORY.md` — curated core knowledge (read this first)
+- `{{WORKSPACE}}/memory/*.md` — structured reference files by topic
+- `{{WORKSPACE}}/memory/YYYY-MM-DD.md` — daily logs (today's file has freshest context)
+- `{{WORKSPACE}}/memory/dreaming/` — dreaming consolidation reports (light/deep/REM phases)
+- `{{WORKSPACE}}/DREAMS.md` — human-readable dreaming diary
+- `{{WORKSPACE}}/wiki/` — Memory Wiki vault (organized browsable knowledge view)
+- `{{WORKSPACE}}/skills/*/SKILL.md` — all skills (hand-crafted and auto-captured)
+
+Memory consolidation is handled by **memory-core Dreaming** (not custom cron jobs). Dreaming promotes well-recalled facts to MEMORY.md automatically based on recall frequency and query diversity.
+
+**Check for existing skills before multi-step work:**
+```bash
+grep -rli "keyword" {{WORKSPACE}}/skills/*/SKILL.md
+```
+If a relevant skill exists, **follow it** rather than figuring out the procedure from scratch.
+
+**Flag a session as important (force skill capture):**
+```bash
+touch /tmp/agent-priority-$(cat /tmp/claude-session-id 2>/dev/null || echo "manual")
+```
+
+**Manually create a skill:**
+```bash
+mkdir -p {{WORKSPACE}}/skills/{slug}
+# Write SKILL.md with procedure, prerequisites, verification, pitfalls
+```
+
+### Rule: Always check memory before:
+- Asking the user for information that might already be documented
+- Guessing at credentials, ports, paths, or configurations
+- Starting work on any system you haven't touched before
+- Making assumptions about business rules or preferences
+
+## {{AGENT_NAME}} Gateway
+
+- Port: {{PORT}}
+- Health check: `curl -s http://localhost:{{PORT}}/health`
+- Config: `{{WORKSPACE}}/openclaw.json`
+
+## Remote Access (MCP)
+
+If this Claude Code instance connects remotely to {{AGENT_NAME}}, memory tools are available as MCP tools:
+- `memory_search` — semantic search
+- `memory_read` — read specific files
+- `skill_list` / `skill_read` — browse skills
+- `memory_candidate` — submit facts to the daily log
+- `session_submit` — submit session transcripts for processing
+- `session_flag` — flag sessions for priority capture
+- `memory_grep` — exact keyword search
+
+## Post-Update Health Check
+
+After any Claude Code CLI update:
+```bash
+bash {{WORKSPACE}}/scripts/claude-code-update-check.sh
+```
