@@ -7,6 +7,155 @@ Versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
 
+## [3.2.1] — 2026-04-10
+
+Production-hardened patch release based on learnings from the first real-world install on a second agent, plus a second round of issues discovered during live gateway startup testing. The v3.2.0 installer worked on fresh synthetic test workspaces but hit 10 distinct issues when run against a long-lived OpenClaw agent with a pre-existing config, extensions, and a state-dir config alongside the workspace config. An 11th issue (multi-user mode not wired up) was found during test planning and deferred to v3.3.0 as experimental. A 12th issue (plugins.load.paths only set in state-dir, not workspace) was found during Phase 3 live gateway testing and fixed immediately. v3.2.1 bundles fixes for bugs 1–10 and 12, documents bug 11 as experimental, and adds significantly expanded documentation so users don't have to rediscover these issues.
+
+### Added
+
+- **`docs/TROUBLESHOOTING.md`** — Comprehensive symptom-first troubleshooting guide covering every issue we've seen in real installs. Organized into install-time, post-install runtime, and update-time sections. Each entry has symptom, cause, fix, and manual recovery commands.
+
+- **`docs/KNOWN-ISSUES.md`** — Catalog of upstream OpenClaw bugs that affect FlipClaw, with workarounds the toolkit ships automatically plus clear "this is NOT a FlipClaw bug" framing. Five documented issues covering the dreaming cron reconciler bug, wiki bridge import returning 0 artifacts, legacy auth field, openclaw-mem0 auto-discovery, and two-config resolution.
+
+- **Pre-flight checks in installers** — Before making any changes, `install-memory.sh` now runs 7 non-destructive checks and reports OK/WARN/FAIL for each:
+  1. Workspace directory exists and is writable
+  2. `openclaw.json` present (unless `--skip-openclaw`)
+  3. State-dir config detection (`~/.openclaw/openclaw.json`) for two-config sync
+  4. Conflicting `openclaw-mem0` extension directories
+  5. Legacy `auth.profiles.*.primary` key
+  6. Gateway reachability on the configured port
+  7. Gemini API key presence
+  Blockers cause early exit with clear messages; warnings proceed with the install.
+
+- **`--gemini-key` installer flag** — New CLI option to pass a Gemini API key directly during install. Auto-writes the key to both `GEMINI_API_KEY` and `GOOGLE_AI_API_KEY` env.vars (memory-core uses one, the CLI uses the other; setting both avoids "provider: none" errors).
+
+- **`scripts/ensure-dreaming-cron.sh`** — Workaround script for an OpenClaw 2026.4.x bug where `memory-core.reconcileShortTermDreamingCronJob` removes the managed "Memory Dreaming Promotion" cron on every gateway startup. See KNOWN-ISSUES.md Issue #1 for the full technical breakdown.
+
+- **"Restore Dreaming Cron After Restart" OpenClaw cron job** — Registered by `install-memory.sh` Step 8. Runs daily at 22:00 ET with `wakeMode: next-heartbeat` and asks the agent to exec `ensure-dreaming-cron.sh`, which recreates the managed dreaming cron if missing. Idempotent (re-runs detect an existing job and skip).
+
+- **README Prerequisites expansion** — Now clearly documents both required API keys (OpenAI and Gemini) with purposes, cost expectations, and where to get them. Adds a "First-install checklist" to catch the most common install-time surprises before they happen.
+
+- **README Troubleshooting & Known Issues section** — New section with a quick symptom → cause → fix table and links to the new TROUBLESHOOTING.md and KNOWN-ISSUES.md docs.
+
+### Fixed — All 10 bugs found during the Ultra install
+
+#### Bug #1: `memory-core.enabled` flag not set on fresh install (Blocker)
+
+The installer added the dreaming config under `memory-core.config.dreaming` but never set `memory-core.enabled: true`. On workspaces where memory-core wasn't already present, memory-core got created with a valid config but was silently disabled, so Dreaming never ran. Fixed by unconditionally setting `mc['enabled'] = True` when adding the dreaming config.
+
+#### Bug #2: Installer only updated workspace config, not state-dir config (Blocker)
+
+OpenClaw agents can have two `openclaw.json` files that matter: one in the workspace (`$WORKSPACE/openclaw.json`) and one in the state-dir (`~/.openclaw/openclaw.json`). Which one the gateway reads depends on how the gateway was started — if the PM2 start script doesn't `cd` to the workspace or set `OPENCLAW_CONFIG_PATH`, the gateway falls back to the state-dir config. The v3.2.0 installer only modified the workspace config, so on such agents, all plugin changes were invisible to the running gateway.
+
+Fixed by restructuring the config-modification Python block to iterate over a `targets` list that includes both files (when the state-dir config exists), so plugin entries, slots, allow list, continuation-skip, and memorySearch all get applied to both.
+
+#### Bug #3: `plugins.slots.memory` not set to `memory-core` (Blocker)
+
+Even with `memory-core.enabled: true`, the plugin won't load as the active memory provider unless `plugins.slots.memory = "memory-core"` is set. Without this, the gateway logs `memory-core: plugin disabled (memory slot set to "openclaw-mem0")` and falls back to whatever plugin previously held the slot. Fixed by setting `plugins.slots.memory = "memory-core"` during install.
+
+#### Bug #4: FlipClaw plugins missing from `plugins.allow` list (Blocker)
+
+On workspaces with a pre-existing `plugins.allow` list (allowlist mode for plugin loading), `memory-core`, `memory-bridge`, and `auto-skill-capture` were silently dropped because only `memory-wiki` was being added to the allow list by the installer. Gateway logs showed `plugins.entries.memory-bridge: plugin not found: memory-bridge (stale config entry ignored)`.
+
+Fixed by extending the allow-list-append logic to cover all four FlipClaw plugins (`memory-core`, `memory-wiki`, `memory-bridge`, `auto-skill-capture`). Only enforces if an allow list is already configured — empty allow list in OpenClaw means "allow all" so we leave it alone.
+
+#### Bug #5: Legacy `auth.profiles.*.primary` not auto-sanitized (Blocker)
+
+OpenClaw 2026.4.9 rejects the legacy `auth.profiles.<name>.primary` field as "Unrecognized key", causing every CLI command to fail with a config validation error. `openclaw doctor --fix` doesn't strip this field. The installer previously left the key in place, so users hit the error on their first post-install CLI command. Fixed by auto-sanitizing the key from both configs during install.
+
+#### Bug #6: Gemini API key requirement not documented (High)
+
+The README listed OpenAI as the only required API key, which left users confused when `openclaw memory status` showed `Provider: none` after install. Memory search falls back to keyword-only without Gemini, and users didn't know why their search quality was poor.
+
+Fixed by adding an explicit "API keys" section to the README Prerequisites that documents both OpenAI and Gemini keys with purposes, cost, and source URLs. Plus the installer now warns at pre-flight time if the Gemini key is missing.
+
+#### Bug #7: No `--gemini-key` flag or auto-detect (Medium)
+
+Related to Bug #6. Users had to manually edit `openclaw.json` to add the Gemini key after running the installer. Fixed by adding the `--gemini-key KEY` flag that writes the key directly into both workspace and state-dir configs (both `GEMINI_API_KEY` and `GOOGLE_AI_API_KEY` vars, since different parts of OpenClaw look at different names).
+
+#### Bug #8: `ensure-dreaming-cron.sh` not tracked in the repo (High)
+
+The workaround script for the dreaming cron reconciler bug existed locally during development but was never committed to the repo. Fresh clones from GitHub didn't include the script, and the installer's "install ensure-dreaming-cron.sh" step silently failed on fresh installs. Fixed by committing the script to `scripts/ensure-dreaming-cron.sh` in the repo.
+
+#### Bug #9: `openclaw-mem0` not cleanly disabled (Medium)
+
+Setting `plugins.entries.openclaw-mem0.enabled: false` prevented the plugin from activating but did NOT prevent OpenClaw's auto-discovery from scanning the physical extension directory at `$WORKSPACE/extensions/openclaw-mem0/` or `~/.openclaw/extensions/openclaw-mem0/`. The gateway printed "duplicate plugin id detected" warnings on every startup and the plugin still competed for the memory slot.
+
+Fixed by moving any conflicting `openclaw-mem0` directories aside to `.disabled-openclaw-mem0-<timestamp>` BEFORE applying config changes, and fully removing `openclaw-mem0` from `plugins.entries` and `plugins.allow` instead of just flipping its `enabled` flag.
+
+#### Bug #10: Health check SessionEnd hook parser false positive (Low)
+
+`claude-code-update-check.sh` reported `SessionEnd hook — Hook exists but points to: NO COMMAND` when the settings.json used the newer nested matcher form:
+```json
+"SessionEnd": [{"hooks": [{"type": "command", "command": "..."}]}]
+```
+The parser only looked at `se[0].command` and missed the nested `se[0].hooks[0].command`. The hook actually worked fine — only the health check was confused.
+
+Fixed by updating the parser to handle both flat and nested forms.
+
+#### Bug #12: `plugins.load.paths` only set in state-dir config (Blocker)
+
+**Discovered during Phase 3 testing** of the v3.2.1 installer on a throwaway agent. When the installer ran against a workspace with no state-dir config, `plugins.load.paths` never got set in the workspace config because line 822 gated that logic on `is_state_dir`. On gateway startup, the gateway couldn't find the memory-bridge or auto-skill-capture extensions at `$WORKSPACE/extensions/`, and the logs showed:
+```
+plugins.entries.memory-bridge: plugin not found: memory-bridge (stale config entry ignored)
+plugins.entries.auto-skill-capture: plugin not found: auto-skill-capture (stale config entry ignored)
+```
+
+Fixed by removing the `is_state_dir` condition — both workspace and state-dir configs now get `plugins.load.paths` set to `$WORKSPACE/extensions`. Verified by re-running the Phase 3 test: the gateway now loads all 10 plugins including memory-bridge and auto-skill-capture, with explicit "started" log lines for both.
+
+### Changed
+
+- `install-memory.sh` now runs pre-flight checks before Step 1 and exits early on blockers
+- `install-memory.sh` iterates plugin/config updates over both workspace and state-dir configs
+- `install-memory.sh` moves aside conflicting `openclaw-mem0` extension directories before config changes
+- `install-memory.sh` fully removes `openclaw-mem0` from `plugins.entries` and `plugins.allow` instead of setting `enabled: false`
+- `install-memory.sh` strips legacy `auth.profiles.*.primary` fields from both configs
+- `install-memory.sh` unconditionally sets `memory-core.enabled: true` when adding dreaming config
+- `install-memory.sh` sets `plugins.slots.memory = "memory-core"` during install
+- `install-memory.sh` adds `memory-core`, `memory-bridge`, `auto-skill-capture`, `memory-wiki` to `plugins.allow` if an allow list exists
+- `install-memory.sh` accepts `--gemini-key` flag and writes it to env.vars
+- `install-memory.sh` warns at pre-flight time if no Gemini API key is configured
+- `install-memory.sh` installs `ensure-dreaming-cron.sh` to the workspace and registers the heal cron
+- `install-memory.sh` sets `plugins.load.paths` in both workspace and state-dir configs (previously only state-dir)
+- `scripts/claude-code-update-check.sh` SessionEnd hook parser handles both flat and nested hook formats
+- `README.md` Prerequisites section now documents both OpenAI and Gemini API keys with cost and source info
+- `README.md` new Troubleshooting & Known Issues section with quick-fix table
+
+### Upstream issues documented
+
+See [docs/KNOWN-ISSUES.md](docs/KNOWN-ISSUES.md) for the full technical details on:
+
+1. OpenClaw 2026.4.x dreaming cron reconciler bug (FlipClaw ships `ensure-dreaming-cron.sh` workaround)
+2. Wiki bridge import returns 0 artifacts (manual `wiki ingest` workaround)
+3. Legacy `auth.profiles.*.primary` not handled by `openclaw doctor --fix` (installer auto-sanitizes)
+4. `openclaw-mem0` auto-discovery ignoring `enabled: false` (installer moves directory aside)
+5. Two-config resolution behavior (installer syncs plugin config to both)
+
+### Upgrade path from 3.2.0
+
+Run the updater:
+```bash
+bash $WORKSPACE/scripts/flipclaw-update.sh
+```
+
+The updater will:
+- Create a snapshot of your current scripts/extensions/state-files
+- Download v3.2.1 from GitHub
+- Apply the new scripts with your original install params
+- Validate post-update (Python + shell syntax checks)
+- Offer automatic rollback on validation failure
+
+If your agent was affected by one or more of the 10 bugs, you'll also need to re-run the installer once after the updater (with `--skip-openclaw` if you want to preserve any manual config changes):
+```bash
+bash /path/to/flipclaw-clone/install.sh \
+  --agent-name "YourAgent" \
+  --workspace $WORKSPACE \
+  --port YOUR_PORT
+```
+The v3.2.1 installer is idempotent — running it on an already-installed workspace only updates what needs updating.
+
+---
+
 ## [3.2.0] — 2026-04-10
 
 ### Added

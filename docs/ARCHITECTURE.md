@@ -1,6 +1,6 @@
 # FlipClaw Architecture Reference
 
-**Version:** 3.2.0 | **Last updated:** 2026-04-10
+**Version:** 3.2.1 | **Last updated:** 2026-04-10
 
 This document is a comprehensive technical deep-dive into FlipClaw's internals. It covers every layer of the memory system, every pipeline stage, every configuration surface, and the update/backup lifecycle. Read this if you want to understand exactly how FlipClaw works before adopting it.
 
@@ -701,6 +701,101 @@ Recommended schedule: run every 6 hours via OpenClaw cron, with failure notifica
 - `settings.json` is backed up to `../backups/claude-code-settings.json` during installation
 - The memory installer backs up the entire `memory/`, `skills/`, `MEMORY.md`, and `openclaw.json` to a timestamped directory before making changes
 - All write operations use atomic write (tmp file + rename) where possible
+
+---
+
+## Two Configs That Matter
+
+*Added in v3.2.1 — prior to this, the installer only touched the workspace config and silently ignored the state-dir config, which broke installs on agents where the gateway was reading the state-dir config at runtime.*
+
+OpenClaw looks for its main `openclaw.json` file in three places, in order:
+
+1. **`$OPENCLAW_CONFIG_PATH`** — the environment variable, if set
+2. **`./openclaw.json`** — in the current working directory when `openclaw gateway run` was invoked
+3. **`~/.openclaw/openclaw.json`** — the state-directory default (this is where `openclaw init` writes config for new installations without an explicit workspace)
+
+On a typical FlipClaw agent, the workspace directory contains its own `openclaw.json` and a PM2 start script that looks like this:
+
+```bash
+#!/bin/bash
+cd /home/user/myagent
+exec openclaw gateway run
+```
+
+Because `cd` runs first, OpenClaw's resolution hits step 2 and picks `myagent/openclaw.json`. But if the start script doesn't `cd`, or the PM2 ecosystem file doesn't set `cwd`, OR the `OPENCLAW_CONFIG_PATH` is never exported, the gateway falls back to step 3 and reads the state-dir config instead.
+
+**Why this matters for FlipClaw:**
+
+On long-lived agents, both files often coexist. The workspace config is what humans edit; the state-dir config is what older tooling wrote and forgot about. A user might see their edits in `myagent/openclaw.json` and assume that's what the gateway is using, but the gateway is actually reading `~/.openclaw/openclaw.json` and ignoring the workspace file entirely.
+
+**How v3.2.1+ handles this:**
+
+The installer detects whether both files exist and writes plugin, slot, allow-list, `continuation-skip`, and `memorySearch` config to BOTH of them. This way, whichever file the gateway ends up reading, it sees the correct FlipClaw configuration.
+
+The pre-flight check announces when it detects a state-dir config:
+
+```
+  [OK] State-dir config detected — installer will sync plugin changes to both
+```
+
+**What FlipClaw does NOT sync to the state-dir:**
+
+Memory files, skills, and gateway auth. The state-dir contains its own auth profiles and its own history; we leave those alone. Only the plugin and memorySearch config blocks are mirrored.
+
+**Best practice for new agents:** Always set `OPENCLAW_CONFIG_PATH` explicitly in the PM2 ecosystem file:
+
+```javascript
+module.exports = {
+  apps: [{
+    name: 'myagent-gateway',
+    script: 'openclaw',
+    args: 'gateway run',
+    cwd: '/home/user/myagent',
+    env: {
+      OPENCLAW_CONFIG_PATH: '/home/user/myagent/openclaw.json',
+      OPENCLAW_GATEWAY_PORT: '3050'
+    }
+  }]
+};
+```
+
+This eliminates any ambiguity about which config the gateway is reading, even if the working directory logic changes in a future OpenClaw version.
+
+---
+
+## Upstream OpenClaw Issues
+
+FlipClaw depends on OpenClaw and inherits its bugs. A few of those bugs are significant enough that FlipClaw ships automatic workarounds for them. See **[docs/KNOWN-ISSUES.md](KNOWN-ISSUES.md)** for the full catalog with symptoms, root causes, and workaround details. The most important ones for architecture understanding:
+
+### Dreaming cron reconciler bug (Issue #1)
+
+On every gateway startup, `memory-core.reconcileShortTermDreamingCronJob` calls `resolveMemoryCorePluginConfig(api.config)` to read the current dreaming config. In 2026.4.x this resolver returns an empty config at startup hook time (likely a race with config loading), which the reconciler interprets as `dreaming.enabled: false` and removes any existing managed cron. The result: the managed dreaming cron works the first time it's created, then disappears on every subsequent restart.
+
+**FlipClaw workaround:**
+- `scripts/ensure-dreaming-cron.sh` is installed to the workspace
+- A "Restore Dreaming Cron After Restart" OpenClaw cron job runs daily at 22:00 ET with `wakeMode: next-heartbeat`
+- The job asks the agent to exec the shell script
+- The script detects the missing managed cron and recreates it with the correct `[managed-by=memory-core.short-term-promotion]` tag, matching the format `buildManagedDreamingCronJob` would produce internally
+
+Both are idempotent. If upstream ever fixes the reconciler, the workaround sees the managed cron is already present and exits cleanly, so there's no harm in leaving it in place.
+
+### Wiki bridge import returns 0 artifacts (Issue #2)
+
+In 2026.4.9, `memory-wiki`'s bridge mode calls `publicArtifacts.listArtifacts()` on the active memory plugin to discover artifacts to import. This call returns an empty list even when memory-core has hundreds of indexed files. `openclaw wiki bridge import` reports `Bridge import synced 0 artifacts across 0 workspaces` regardless of how much memory exists.
+
+**FlipClaw workaround:** None automatic. Users must use `openclaw wiki ingest <file>` to pull specific files into the wiki manually. This is NOT a FlipClaw limitation — the wiki scaffold is correctly configured, the upstream import pipeline is broken.
+
+### Legacy `auth.profiles.*.primary` (Issue #3)
+
+OpenClaw 2026.4.9 rejects the legacy `auth.profiles.<name>.primary` field as "Unrecognized". `openclaw doctor --fix` doesn't strip it. Any workspace config carried forward from an older OpenClaw version hits this on every CLI invocation until the key is removed.
+
+**FlipClaw workaround:** The installer auto-sanitizes this key during the config-update step.
+
+### `openclaw-mem0` auto-discovery (Issue #4)
+
+Setting `plugins.entries.openclaw-mem0.enabled: false` prevents the plugin from activating but does NOT prevent OpenClaw's auto-discovery from loading it from the physical extension directory, causing "duplicate plugin id detected" warnings and slot contention with memory-core.
+
+**FlipClaw workaround:** The installer moves conflicting `openclaw-mem0` directories aside (to `.disabled-openclaw-mem0-<timestamp>`) BEFORE making config changes, and fully removes the plugin entry instead of just setting `enabled: false`.
 
 ---
 

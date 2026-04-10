@@ -76,6 +76,9 @@ SKILL_PROVIDER="openai"
 EMBEDDING_PROVIDER="gemini"
 EMBEDDING_MODEL="gemini-embedding-001"
 
+# API keys (v3.2.1 addition)
+GEMINI_KEY=""
+
 usage() {
     echo "Usage: bash install-memory.sh [OPTIONS]"
     echo ""
@@ -93,6 +96,10 @@ usage() {
     echo "  --generation-model MODEL Skill generation model (default: gpt-5.4-mini)"
     echo "  --embedding-provider P   Embedding provider: gemini|openai (default: gemini)"
     echo "  --embedding-model MODEL  Embedding model (default: gemini-embedding-001)"
+    echo ""
+    echo "API keys (optional — can also be set directly in openclaw.json env.vars):"
+    echo "  --gemini-key KEY         Gemini API key (required for hybrid semantic search)"
+    echo "                           Get a free key at https://aistudio.google.com/apikey"
     echo ""
     echo "Other options:"
     echo "  --skip-openclaw          Skip OpenClaw config changes"
@@ -115,6 +122,7 @@ while [[ $# -gt 0 ]]; do
         --generation-model) GENERATION_MODEL="$2"; shift 2 ;;
         --embedding-provider) EMBEDDING_PROVIDER="$2"; shift 2 ;;
         --embedding-model) EMBEDDING_MODEL="$2"; shift 2 ;;
+        --gemini-key) GEMINI_KEY="$2"; shift 2 ;;
         --skip-openclaw) SKIP_OPENCLAW_CONFIG=true; shift ;;
         --dry-run) DRY_RUN=true; shift ;;
         --help) usage ;;
@@ -188,6 +196,118 @@ if [ "$DRY_RUN" = true ]; then
     echo -e "${YELLOW}DRY RUN — no changes will be made${NC}"
     echo ""
 fi
+
+# ──────────────────────────────────────────────────────────────
+# v3.2.1 addition: Pre-flight checks
+# ──────────────────────────────────────────────────────────────
+# Validate the install environment BEFORE making any changes. Each check
+# is non-fatal unless it is a blocker. Blockers cause an early exit with
+# a clear error message. Warnings are printed but install proceeds.
+
+echo -e "${BLUE}Pre-flight checks${NC}"
+
+PREFLIGHT_FAIL=0
+PREFLIGHT_WARN=0
+
+preflight_ok()   { echo -e "  ${GREEN}[OK]${NC} $1"; }
+preflight_warn() { echo -e "  ${YELLOW}[WARN]${NC} $1${2:+ — $2}"; PREFLIGHT_WARN=$((PREFLIGHT_WARN+1)); }
+preflight_fail() { echo -e "  ${RED}[FAIL]${NC} $1${2:+ — $2}"; PREFLIGHT_FAIL=$((PREFLIGHT_FAIL+1)); }
+
+# 1. Workspace directory exists and is writable
+if [ ! -d "$WORKSPACE" ]; then
+    preflight_fail "Workspace directory" "not found: $WORKSPACE (create it before running the installer)"
+elif [ ! -w "$WORKSPACE" ]; then
+    preflight_fail "Workspace writability" "$WORKSPACE exists but is not writable by $(whoami)"
+else
+    preflight_ok "Workspace writable: $WORKSPACE"
+fi
+
+# 2. openclaw.json present (unless --skip-openclaw)
+if [ "$SKIP_OPENCLAW_CONFIG" = false ]; then
+    if [ ! -f "$WORKSPACE/openclaw.json" ]; then
+        preflight_warn "openclaw.json" "not found at $WORKSPACE/openclaw.json — plugin config step will be skipped"
+    else
+        preflight_ok "openclaw.json found at $WORKSPACE/openclaw.json"
+    fi
+fi
+
+# 3. State-dir config detection (Bug #2 visibility)
+if [ -f "$HOME/.openclaw/openclaw.json" ]; then
+    preflight_ok "State-dir config detected — installer will sync plugin changes to both"
+fi
+
+# 4. Conflicting openclaw-mem0 extensions (Bug #9 visibility)
+MEM0_FOUND=0
+for ext_dir in "$WORKSPACE/extensions/openclaw-mem0" "$HOME/.openclaw/extensions/openclaw-mem0"; do
+    if [ -d "$ext_dir" ]; then
+        preflight_warn "openclaw-mem0 extension at $ext_dir" "will be moved aside during install"
+        MEM0_FOUND=1
+    fi
+done
+if [ "$MEM0_FOUND" -eq 0 ]; then
+    preflight_ok "No conflicting openclaw-mem0 extension"
+fi
+
+# 5. Legacy auth.profiles.*.primary key (Bug #5 visibility)
+if [ -f "$WORKSPACE/openclaw.json" ] && command -v python3 >/dev/null 2>&1; then
+    HAS_LEGACY_AUTH=$(python3 -c "
+import json
+try:
+    d = json.load(open('$WORKSPACE/openclaw.json'))
+    profiles = d.get('auth', {}).get('profiles', {})
+    found = any(isinstance(p, dict) and 'primary' in p for p in profiles.values())
+    print('yes' if found else 'no')
+except Exception:
+    print('no')
+" 2>/dev/null)
+    if [ "$HAS_LEGACY_AUTH" = "yes" ]; then
+        preflight_warn "Legacy auth.profiles.*.primary key detected" "will be auto-sanitized by installer"
+    else
+        preflight_ok "No legacy auth.profiles.*.primary keys"
+    fi
+fi
+
+# 6. Gateway health (informational only)
+if [ "$SKIP_OPENCLAW_CONFIG" = false ] && [ -n "$PORT" ]; then
+    if curl -sf -m 3 "http://localhost:$PORT/health" >/dev/null 2>&1; then
+        preflight_ok "Gateway reachable on port $PORT"
+    else
+        preflight_warn "Gateway not reachable on port $PORT" "cron jobs will be skipped; set them up manually after the gateway is running"
+    fi
+fi
+
+# 7. Gemini API key presence (Bug #6 visibility)
+if [ "$SKIP_OPENCLAW_CONFIG" = false ] && [ -f "$WORKSPACE/openclaw.json" ]; then
+    if [ -n "$GEMINI_KEY" ]; then
+        preflight_ok "Gemini API key provided via --gemini-key flag"
+    else
+        HAS_GEMINI_PRE=$(python3 -c "
+import json
+try:
+    d = json.load(open('$WORKSPACE/openclaw.json'))
+    env_vars = d.get('env', {}).get('vars', {})
+    print('yes' if ('GEMINI_API_KEY' in env_vars or 'GOOGLE_AI_API_KEY' in env_vars) else 'no')
+except Exception:
+    print('no')
+" 2>/dev/null)
+        if [ "$HAS_GEMINI_PRE" = "yes" ]; then
+            preflight_ok "Gemini API key already in openclaw.json env.vars"
+        else
+            preflight_warn "Gemini API key not found" "memory search will fall back to keyword-only until configured (see install summary)"
+        fi
+    fi
+fi
+
+echo ""
+if [ "$PREFLIGHT_FAIL" -gt 0 ]; then
+    echo -e "${RED}Pre-flight check failed ($PREFLIGHT_FAIL blocker(s)). Fix the errors above and re-run.${NC}"
+    exit 1
+elif [ "$PREFLIGHT_WARN" -gt 0 ]; then
+    echo -e "  ${YELLOW}Pre-flight: $PREFLIGHT_WARN warning(s) — proceeding with install${NC}"
+else
+    echo -e "  ${GREEN}Pre-flight: all checks passed${NC}"
+fi
+echo ""
 
 # ──────────────────────────────────────────────────────────────
 # Step 1: Detect and handle existing memory systems
@@ -438,12 +558,21 @@ if [ "$DRY_RUN" = false ]; then
 
     sed "s|{{WORKSPACE}}|$WORKSPACE|g" "$TOOLKIT_DIR/scripts/index-daily-logs-prompt.md" > "$WORKSPACE/scripts/index-daily-logs-prompt.md"
     echo "  Installed: index-daily-logs-prompt.md"
+
+    # ensure-dreaming-cron.sh — workaround for OpenClaw 2026.4.x reconciler bug
+    # that removes the managed dreaming cron on every gateway restart.
+    sed -e "s|{{WORKSPACE}}|$WORKSPACE|g" \
+        -e "s|{{PORT}}|$PORT|g" \
+        "$TOOLKIT_DIR/scripts/ensure-dreaming-cron.sh" > "$WORKSPACE/scripts/ensure-dreaming-cron.sh"
+    chmod +x "$WORKSPACE/scripts/ensure-dreaming-cron.sh"
+    echo "  Installed: ensure-dreaming-cron.sh (workaround for memory-core dreaming cron bug)"
 else
     echo "  Would install: incremental-memory-capture.py (model: $CAPTURE_MODEL)"
     echo "  Would install: memory-writer.py (legacy manual backfill only, model: $WRITER_MODEL)"
     echo "  Would install: curate-memory-prompt.md (legacy manual reference)"
     echo "  Would install: index-daily-logs-prompt.md"
     echo "  Would install: lockutil.py"
+    echo "  Would install: ensure-dreaming-cron.sh (dreaming cron heal workaround)"
 fi
 
 # ──────────────────────────────────────────────────────────────
@@ -488,52 +617,45 @@ elif [ ! -f "$OC_CONFIG" ]; then
     echo -e "  ${YELLOW}No openclaw.json found — skipping config${NC}"
     echo "  Add plugin and memorySearch config manually after creating openclaw.json"
 else
+    # ─────────────────────────────────────────────────────────────────
+    # v3.2.1 Bug #9 fix: move any conflicting openclaw-mem0 extension
+    # directories out of the way BEFORE config changes, so the gateway
+    # cannot auto-discover them and compete for the memory slot.
+    # ─────────────────────────────────────────────────────────────────
+    if [ "$DRY_RUN" = false ]; then
+        for ext_dir in \
+            "$WORKSPACE/extensions/openclaw-mem0" \
+            "$HOME/.openclaw/extensions/openclaw-mem0"; do
+            if [ -d "$ext_dir" ]; then
+                dest="$(dirname "$ext_dir")/.disabled-openclaw-mem0-$(date +%Y%m%d-%H%M%S)"
+                mv "$ext_dir" "$dest"
+                echo "  Moved aside: $ext_dir → $(basename "$dest")"
+            fi
+        done
+    fi
+
+    # ─────────────────────────────────────────────────────────────────
+    # v3.2.1 Bug #2 fix: apply config changes to BOTH the workspace
+    # config and the state-dir config (if it exists). Some agents use
+    # ~/.openclaw/openclaw.json at runtime (PM2 start scripts that don't
+    # set OPENCLAW_CONFIG_PATH). The installer previously only touched
+    # the workspace config, leaving the state-dir stale.
+    # ─────────────────────────────────────────────────────────────────
+    STATE_DIR_CONFIG="$HOME/.openclaw/openclaw.json"
     if [ "$DRY_RUN" = false ]; then
         python3 << PYEOF
 import json
+import os
 
-with open('$OC_CONFIG') as f:
-    d = json.load(f)
+# Config targets: workspace always, state-dir if present
+targets = ['$OC_CONFIG']
+state_dir_cfg = '$STATE_DIR_CONFIG'
+if os.path.exists(state_dir_cfg) and state_dir_cfg != '$OC_CONFIG':
+    targets.append(state_dir_cfg)
+    print(f'  Note: state-dir config detected at {state_dir_cfg} — will sync plugin changes to both.')
 
-plugins = d.setdefault('plugins', {})
-entries = plugins.setdefault('entries', {})
-
-# Disable Mem0 if present
-if 'openclaw-mem0' in entries:
-    entries['openclaw-mem0']['enabled'] = False
-    print('  Disabled: openclaw-mem0 plugin')
-
-# Add memory-bridge plugin
-if 'memory-bridge' not in entries and 'ari-memory-bridge' not in entries:
-    entries['memory-bridge'] = {
-        'enabled': True,
-        'config': {}
-    }
-    print('  Added: memory-bridge plugin')
-else:
-    print('  memory-bridge plugin already configured')
-
-# Add auto-skill-capture plugin
-if 'auto-skill-capture' not in entries:
-    entries['auto-skill-capture'] = {
-        'enabled': True,
-        'config': {
-            'captureEnabled': True,
-            'recallEnabled': False,
-            'outputDir': 'skills',
-            'extractionModel': '$EXTRACTION_MODEL',
-            'generationModel': '$GENERATION_MODEL',
-            'provider': '$SKILL_PROVIDER'
-        }
-    }
-    print('  Added: auto-skill-capture plugin')
-else:
-    print('  auto-skill-capture plugin already configured')
-
-# Configure memory-core Dreaming
-mc = entries.get('memory-core', {})
-if not mc.get('config', {}).get('dreaming', {}).get('enabled'):
-    mc.setdefault('config', {})['dreaming'] = {
+def dreaming_config():
+    return {
         'enabled': True,
         'frequency': '0 4 * * *',
         'timezone': 'America/New_York',
@@ -563,14 +685,9 @@ if not mc.get('config', {}).get('dreaming', {}).get('enabled'):
             }
         }
     }
-    entries['memory-core'] = mc
-    print('  Configured: memory-core Dreaming (daily 4 AM)')
-else:
-    print('  memory-core Dreaming already configured')
 
-# Configure Memory Wiki (bridge mode)
-if 'memory-wiki' not in entries:
-    entries['memory-wiki'] = {
+def memory_wiki_config():
+    return {
         'enabled': True,
         'config': {
             'vaultMode': 'bridge',
@@ -588,74 +705,245 @@ if 'memory-wiki' not in entries:
             'render': {'preserveHumanBlocks': True, 'createBacklinks': True, 'createDashboards': True}
         }
     }
-    print('  Added: memory-wiki plugin (bridge mode)')
-else:
-    print('  memory-wiki plugin already configured')
 
-# Add memory-wiki to plugins.allow if not present
-allow = plugins.get('allow', [])
-if 'memory-wiki' not in allow:
-    allow.append('memory-wiki')
-    plugins['allow'] = allow
-    print('  Added memory-wiki to plugins.allow')
+for target_path in targets:
+    is_state_dir = (target_path == state_dir_cfg)
+    label = 'state-dir' if is_state_dir else 'workspace'
+    print(f'  [{label}] {target_path}')
 
-# Configure continuation-skip
-agents = d.setdefault('agents', {})
-defaults = agents.setdefault('defaults', {})
-if defaults.get('contextInjection') != 'continuation-skip':
-    defaults['contextInjection'] = 'continuation-skip'
-    print('  Configured: contextInjection = continuation-skip')
+    with open(target_path) as f:
+        d = json.load(f)
 
-# Configure memorySearch
-agents = d.setdefault('agents', {})
-defaults = agents.setdefault('defaults', {})
-ms = defaults.get('memorySearch', {})
+    # ─────────────────────────────────────────────────────────
+    # v3.2.1 Bug #5 fix: strip legacy auth.profiles.*.primary key
+    # that fails validation on OpenClaw 2026.4.9+.
+    # ─────────────────────────────────────────────────────────
+    auth = d.get('auth', {})
+    profiles = auth.get('profiles', {})
+    for profile_name, profile in profiles.items():
+        if isinstance(profile, dict) and 'primary' in profile:
+            del profile['primary']
+            print(f'    Sanitized: removed legacy auth.profiles.{profile_name}.primary')
 
-if not ms.get('enabled'):
-    defaults['memorySearch'] = {
-        'enabled': True,
-        'sources': ['memory', 'sessions'],
-        'experimental': {'sessionMemory': True},
-        'provider': '$EMBEDDING_PROVIDER',
-        'model': '$EMBEDDING_MODEL',
-        'sync': {
-            'onSessionStart': True,
-            'onSearch': True,
-            'watch': True,
-            'watchDebounceMs': 1500,
-            'sessions': {
-                'deltaBytes': 25000,
-                'deltaMessages': 15,
-                'postCompactionForce': True
-            }
-        },
-        'query': {
-            'maxResults': 8,
-            'hybrid': {
-                'enabled': True,
-                'vectorWeight': 0.7,
-                'textWeight': 0.3,
-                'candidateMultiplier': 4,
-                'mmr': {'enabled': True, 'lambda': 0.7},
-                'temporalDecay': {'enabled': True, 'halfLifeDays': 30}
-            }
-        },
-        'cache': {'enabled': True, 'maxEntries': 50000},
-        'extraPaths': ['skills']
-    }
-    print('  Configured: memorySearch (hybrid Gemini search)')
-else:
-    # Just ensure skills are in extraPaths
-    if 'skills' not in ms.get('extraPaths', []):
-        ms.setdefault('extraPaths', []).append('skills')
-        defaults['memorySearch'] = ms
-        print('  Added skills to existing memorySearch.extraPaths')
+    plugins = d.setdefault('plugins', {})
+    entries = plugins.setdefault('entries', {})
+
+    # ─────────────────────────────────────────────────────────
+    # v3.2.1 Bug #9 fix: fully remove openclaw-mem0 plugin entry
+    # and allow-list membership (previously just set enabled:
+    # false, which left the plugin auto-discoverable).
+    # ─────────────────────────────────────────────────────────
+    if 'openclaw-mem0' in entries:
+        del entries['openclaw-mem0']
+        print('    Removed: openclaw-mem0 plugin entry (was enabled: False, now fully removed)')
+
+    # memory-bridge plugin
+    if 'memory-bridge' not in entries and 'ari-memory-bridge' not in entries:
+        entries['memory-bridge'] = {
+            'enabled': True,
+            'config': {}
+        }
+        print('    Added: memory-bridge plugin')
     else:
-        print('  memorySearch already configured')
+        print('    memory-bridge plugin already configured')
 
-with open('$OC_CONFIG', 'w') as f:
-    json.dump(d, f, indent=2)
+    # auto-skill-capture plugin
+    if 'auto-skill-capture' not in entries:
+        entries['auto-skill-capture'] = {
+            'enabled': True,
+            'config': {
+                'captureEnabled': True,
+                'recallEnabled': False,
+                'outputDir': 'skills',
+                'extractionModel': '$EXTRACTION_MODEL',
+                'generationModel': '$GENERATION_MODEL',
+                'provider': '$SKILL_PROVIDER'
+            }
+        }
+        print('    Added: auto-skill-capture plugin')
+    else:
+        print('    auto-skill-capture plugin already configured')
+
+    # ─────────────────────────────────────────────────────────
+    # v3.2.1 Bug #1 fix: always set enabled: True on memory-core.
+    # Previously the installer only added the dreaming config,
+    # leaving memory-core disabled (plugin wouldn't load) on
+    # fresh installs where memory-core wasn't pre-present.
+    # ─────────────────────────────────────────────────────────
+    mc = entries.get('memory-core', {})
+    mc['enabled'] = True  # <-- THE FIX
+    if not mc.get('config', {}).get('dreaming', {}).get('enabled'):
+        mc.setdefault('config', {})['dreaming'] = dreaming_config()
+        print('    Configured: memory-core (enabled: true) + Dreaming (daily 4 AM ET)')
+    else:
+        print('    memory-core already configured; ensured enabled: true')
+    entries['memory-core'] = mc
+
+    # ─────────────────────────────────────────────────────────
+    # v3.2.1 Bug #3 fix: set plugins.slots.memory = memory-core
+    # so the gateway actually activates memory-core as the memory
+    # provider. Without this, memory-core logs as "disabled (memory
+    # slot set to X)" even if enabled: true is set.
+    # ─────────────────────────────────────────────────────────
+    slots = plugins.setdefault('slots', {})
+    if slots.get('memory') != 'memory-core':
+        slots['memory'] = 'memory-core'
+        print('    Set: plugins.slots.memory = memory-core')
+
+    # memory-wiki plugin
+    if 'memory-wiki' not in entries:
+        entries['memory-wiki'] = memory_wiki_config()
+        print('    Added: memory-wiki plugin (bridge mode)')
+    else:
+        print('    memory-wiki plugin already configured')
+
+    # ─────────────────────────────────────────────────────────
+    # v3.2.1 Bug #4 fix: ensure all FlipClaw plugins are in the
+    # plugins.allow list. Previously only memory-wiki was added,
+    # so memory-core/memory-bridge/auto-skill-capture were
+    # silently dropped on workspaces with a pre-existing allow list.
+    # ─────────────────────────────────────────────────────────
+    allow = plugins.get('allow', [])
+    # Only enforce allow list membership if one is already configured.
+    # Empty allow list means "allow all" in OpenClaw.
+    if allow:
+        for name in ['memory-core', 'memory-wiki', 'memory-bridge', 'auto-skill-capture']:
+            if name not in allow:
+                allow.append(name)
+                print(f'    Added to plugins.allow: {name}')
+        # Also remove openclaw-mem0 from allow list if present
+        if 'openclaw-mem0' in allow:
+            allow.remove('openclaw-mem0')
+            print('    Removed from plugins.allow: openclaw-mem0')
+        plugins['allow'] = allow
+
+    # ─────────────────────────────────────────────────────────
+    # v3.2.1 Bug #12 fix: ensure plugins.load.paths includes the
+    # workspace extensions dir in BOTH configs. Previously this was
+    # only done for state-dir configs, which meant workspace-only
+    # installs couldn't find memory-bridge/auto-skill-capture on
+    # gateway startup. Gateway log: "plugin not found: memory-bridge".
+    # ─────────────────────────────────────────────────────────
+    load = plugins.setdefault('load', {})
+    paths = load.setdefault('paths', [])
+    ext_path = '$WORKSPACE/extensions'
+    if ext_path not in paths:
+        paths.append(ext_path)
+        print(f'    Added to plugins.load.paths: {ext_path}')
+
+    # ─────────────────────────────────────────────────────────────
+    # Configure continuation-skip (agents.defaults.contextInjection)
+    # ─────────────────────────────────────────────────────────────
+    agents = d.setdefault('agents', {})
+    defaults = agents.setdefault('defaults', {})
+    if defaults.get('contextInjection') != 'continuation-skip':
+        defaults['contextInjection'] = 'continuation-skip'
+        print('    Set: contextInjection = continuation-skip')
+
+    # ─────────────────────────────────────────────────────────────
+    # Configure memorySearch (hybrid Gemini search)
+    # ─────────────────────────────────────────────────────────────
+    ms = defaults.get('memorySearch', {})
+    if not ms.get('enabled'):
+        defaults['memorySearch'] = {
+            'enabled': True,
+            'sources': ['memory', 'sessions'],
+            'experimental': {'sessionMemory': True},
+            'provider': '$EMBEDDING_PROVIDER',
+            'model': '$EMBEDDING_MODEL',
+            'sync': {
+                'onSessionStart': True,
+                'onSearch': True,
+                'watch': True,
+                'watchDebounceMs': 1500,
+                'sessions': {
+                    'deltaBytes': 25000,
+                    'deltaMessages': 15,
+                    'postCompactionForce': True
+                }
+            },
+            'query': {
+                'maxResults': 8,
+                'hybrid': {
+                    'enabled': True,
+                    'vectorWeight': 0.7,
+                    'textWeight': 0.3,
+                    'candidateMultiplier': 4,
+                    'mmr': {'enabled': True, 'lambda': 0.7},
+                    'temporalDecay': {'enabled': True, 'halfLifeDays': 30}
+                }
+            },
+            'cache': {'enabled': True, 'maxEntries': 50000},
+            'extraPaths': ['skills']
+        }
+        print('    Configured: memorySearch (hybrid Gemini search)')
+    else:
+        # Just ensure skills are in extraPaths
+        if 'skills' not in ms.get('extraPaths', []):
+            ms.setdefault('extraPaths', []).append('skills')
+            defaults['memorySearch'] = ms
+            print('    Added skills to existing memorySearch.extraPaths')
+        else:
+            print('    memorySearch already configured')
+
+    # Write back
+    with open(target_path, 'w') as f:
+        json.dump(d, f, indent=2)
 PYEOF
+
+        # ─────────────────────────────────────────────────────────
+        # v3.2.1 Bug #6/#7 fix: Gemini API key handling.
+        # If --gemini-key was provided, write it to openclaw.json env.vars.
+        # Otherwise, detect whether a key is already present and warn the
+        # user if not (memory search falls back to keyword-only without it).
+        # ─────────────────────────────────────────────────────────
+        STATE_DIR_CONFIG="$HOME/.openclaw/openclaw.json"
+        if [ -n "$GEMINI_KEY" ]; then
+            python3 << PYEOF
+import json
+import os
+targets = ['$OC_CONFIG']
+if os.path.exists('$STATE_DIR_CONFIG') and '$STATE_DIR_CONFIG' != '$OC_CONFIG':
+    targets.append('$STATE_DIR_CONFIG')
+for target in targets:
+    with open(target) as f:
+        d = json.load(f)
+    env_vars = d.setdefault('env', {}).setdefault('vars', {})
+    env_vars['GEMINI_API_KEY'] = '$GEMINI_KEY'
+    env_vars['GOOGLE_AI_API_KEY'] = '$GEMINI_KEY'
+    with open(target, 'w') as f:
+        json.dump(d, f, indent=2)
+    print(f'  Wrote GEMINI_API_KEY to: {target}')
+PYEOF
+        else
+            HAS_GEMINI=$(python3 -c "
+import json
+d = json.load(open('$OC_CONFIG'))
+env_vars = d.get('env', {}).get('vars', {})
+print('yes' if ('GEMINI_API_KEY' in env_vars or 'GOOGLE_AI_API_KEY' in env_vars) else 'no')
+" 2>/dev/null)
+            if [ "$HAS_GEMINI" = "no" ]; then
+                echo ""
+                echo -e "  ${YELLOW}┌─────────────────────────────────────────────────────────────┐${NC}"
+                echo -e "  ${YELLOW}│ WARNING: No Gemini API key found in openclaw.json env.vars  │${NC}"
+                echo -e "  ${YELLOW}│                                                             │${NC}"
+                echo -e "  ${YELLOW}│ Memory search will fall back to keyword-only mode without   │${NC}"
+                echo -e "  ${YELLOW}│ hybrid semantic (vector) search until you add one.          │${NC}"
+                echo -e "  ${YELLOW}│                                                             │${NC}"
+                echo -e "  ${YELLOW}│ Get a free Gemini API key:                                  │${NC}"
+                echo -e "  ${YELLOW}│   https://aistudio.google.com/apikey                        │${NC}"
+                echo -e "  ${YELLOW}│                                                             │${NC}"
+                echo -e "  ${YELLOW}│ Then add to env.vars in openclaw.json:                      │${NC}"
+                echo -e "  ${YELLOW}│   \"GEMINI_API_KEY\": \"your-key-here\",                        │${NC}"
+                echo -e "  ${YELLOW}│   \"GOOGLE_AI_API_KEY\": \"your-key-here\"                      │${NC}"
+                echo -e "  ${YELLOW}│                                                             │${NC}"
+                echo -e "  ${YELLOW}│ Or re-run installer with --gemini-key \"your-key-here\"       │${NC}"
+                echo -e "  ${YELLOW}└─────────────────────────────────────────────────────────────┘${NC}"
+                echo ""
+            else
+                echo "  Gemini API key detected in openclaw.json"
+            fi
+        fi
     else
         echo "  Would configure: plugins + memorySearch in openclaw.json"
     fi
@@ -817,6 +1105,58 @@ echo ""
 echo "  NOTE: memory-writer.py is kept on disk for manual backfill only."
 echo "  curate-memory-prompt.md is kept as reference for manual curation."
 
+# ── Dreaming cron heal workaround (OpenClaw 2026.4.x bug) ────────────
+#
+# OpenClaw 2026.4.x has a bug where memory-core's
+# reconcileShortTermDreamingCronJob removes the managed "Memory Dreaming
+# Promotion" cron on every gateway startup, even when dreaming is enabled in
+# config. This breaks the auto-scheduled dreaming run.
+#
+# Workaround: register an OpenClaw cron job (NOT a system crontab entry —
+# system crontab is forbidden by Ari conventions) that fires shortly after the
+# nightly restart and runs ensure-dreaming-cron.sh, which detects the missing
+# managed cron and recreates it with the correct managed-by tag.
+#
+# Skipped on dry-run, and skipped if the gateway is unreachable (the cron can
+# be added manually later via:
+#   openclaw cron add --name "Restore Dreaming Cron After Restart" ...
+# )
+
+if [ "$DRY_RUN" = false ]; then
+    if curl -sf "http://localhost:${PORT}/health" >/dev/null 2>&1; then
+        # Check if heal cron already exists (idempotent install/update)
+        HEAL_EXISTS=$(OPENCLAW_CONFIG_PATH="$WORKSPACE/openclaw.json" \
+            openclaw cron list 2>/dev/null \
+            | grep -c "Restore Dreaming Cron After Restart" || true)
+
+        if [ "$HEAL_EXISTS" -ge 1 ]; then
+            echo "  Dreaming heal cron already exists; skipping"
+        else
+            OPENCLAW_CONFIG_PATH="$WORKSPACE/openclaw.json" openclaw cron add \
+                --name "Restore Dreaming Cron After Restart" \
+                --description "Workaround for OpenClaw 2026.4.x bug where memory-core reconciler removes managed dreaming cron on gateway startup. Runs scripts/ensure-dreaming-cron.sh shortly after the nightly restart to recreate the managed cron if missing." \
+                --cron "0 22 * * *" \
+                --tz "America/New_York" \
+                --session main \
+                --wake next-heartbeat \
+                --system-event "Memory dreaming cron health check after nightly restart. Run: exec $WORKSPACE/scripts/ensure-dreaming-cron.sh" \
+                >/dev/null 2>&1 \
+                && echo "  Installed: 'Restore Dreaming Cron After Restart' OpenClaw cron (22:00 ET daily)" \
+                || echo -e "  ${YELLOW}[WARN]${NC} Failed to add dreaming heal cron — add manually after gateway is up"
+        fi
+    else
+        echo -e "  ${YELLOW}[WARN]${NC} Gateway not reachable on port $PORT — skipping dreaming heal cron install."
+        echo "         After starting the gateway, run:"
+        echo "           OPENCLAW_CONFIG_PATH=\"$WORKSPACE/openclaw.json\" openclaw cron add \\"
+        echo "             --name \"Restore Dreaming Cron After Restart\" \\"
+        echo "             --cron \"0 22 * * *\" --tz \"America/New_York\" \\"
+        echo "             --session main --wake next-heartbeat \\"
+        echo "             --system-event \"Memory dreaming cron health check after nightly restart. Run: exec $WORKSPACE/scripts/ensure-dreaming-cron.sh\""
+    fi
+else
+    echo "  Would install: 'Restore Dreaming Cron After Restart' OpenClaw cron (22:00 ET daily)"
+fi
+
 # ──────────────────────────────────────────────────────────────
 # Step 9: Verify installation
 # ──────────────────────────────────────────────────────────────
@@ -842,6 +1182,7 @@ else
 
     if [ -f "$WORKSPACE/scripts/incremental-memory-capture.py" ]; then check "Incremental capture script" "pass"; else check "Incremental capture" "fail" "not found"; fi
     if [ -f "$WORKSPACE/scripts/memory-writer.py" ]; then check "Memory writer script (legacy manual backfill)" "pass"; else check "Memory writer script (legacy manual backfill)" "warn" "not found"; fi
+    if [ -f "$WORKSPACE/scripts/ensure-dreaming-cron.sh" ] && [ -x "$WORKSPACE/scripts/ensure-dreaming-cron.sh" ]; then check "Dreaming cron heal script" "pass"; else check "Dreaming cron heal script" "fail" "not found or not executable"; fi
     if [ -f "$WORKSPACE/scripts/lockutil.py" ]; then check "Lock utility" "pass"; else check "Lock utility" "fail" "not found"; fi
     if [ -f "$WORKSPACE/scripts/curate-memory-prompt.md" ]; then check "Curation prompt" "pass"; else check "Curation prompt" "fail" "not found"; fi
     if [ -f "$WORKSPACE/scripts/index-daily-logs-prompt.md" ]; then check "Index prompt" "pass"; else check "Index prompt" "fail" "not found"; fi

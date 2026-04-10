@@ -7,3 +7,6 @@ credentials*.json
 __pycache__/
 *.pyc
 .DS_Store
+
+# Internal bug tracking (not for public repo)
+BUGS-FOR-*.md

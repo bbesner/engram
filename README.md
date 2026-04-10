@@ -83,10 +83,50 @@ Claude Code CLI                    OpenClaw Agent
 ## Quick Start
 
 ### Prerequisites
-- **OpenClaw 2026.4.9 or later** (required for memory-core Dreaming, memory-wiki, and continuation-skip). Install with `npm install -g openclaw`. The installer verifies this before making any changes.
-- [Claude Code CLI](https://docs.anthropic.com/en/docs/claude-code) installed
-- Python 3.10+, Node.js 18+
-- An OpenAI API key (for fact extraction via GPT-5.4 Nano — costs pennies)
+
+- **OpenClaw 2026.4.9 or later** — required for memory-core Dreaming, memory-wiki, and continuation-skip. Install with `npm install -g openclaw`. The installer verifies this before making any changes.
+- [Claude Code CLI](https://docs.anthropic.com/en/docs/claude-code) installed (uses your Claude Max subscription, no API charges)
+- **Python 3.10+** and **Node.js 18+**
+
+### API keys
+
+Two API keys are needed. Both go into your agent's `openclaw.json` under `env.vars`. Neither is billed through Anthropic — Claude Code itself still uses your Max subscription.
+
+| Key | Purpose | Cost | Where to get it |
+|-----|---------|------|-----------------|
+| **OpenAI API key** | Fact extraction (GPT-5.4 Nano) and auto-skill capture (GPT-5.4 Mini) | Pennies per day for typical use | [platform.openai.com/api-keys](https://platform.openai.com/api-keys) |
+| **Gemini API key** | Hybrid semantic search — vector embeddings via `gemini-embedding-001`. Required for memory-core's full search quality; falls back to keyword-only without it. | **Free tier is sufficient** for most workloads | [aistudio.google.com/apikey](https://aistudio.google.com/apikey) |
+
+**Add them to your `openclaw.json`:**
+
+```json
+{
+  "env": {
+    "vars": {
+      "OPENAI_API_KEY": "sk-proj-...",
+      "GEMINI_API_KEY": "AIza...",
+      "GOOGLE_AI_API_KEY": "AIza..."
+    }
+  }
+}
+```
+
+Or pass the Gemini key directly to the installer: `bash install.sh ... --gemini-key "AIza..."`
+
+> **Why both `GEMINI_API_KEY` and `GOOGLE_AI_API_KEY`?** Different parts of OpenClaw look for different variable names. Set both to the same value to avoid "provider: none" errors.
+
+### First-install checklist
+
+Before running the installer, make sure you have:
+
+- [ ] `openclaw --version` prints `2026.4.9` or newer
+- [ ] `claude --version` works (Claude Code CLI installed)
+- [ ] `python3 --version` ≥ 3.10
+- [ ] `node --version` ≥ 18
+- [ ] Your agent workspace directory exists and contains an `openclaw.json`
+- [ ] Your OpenClaw gateway is running (PM2 or direct) — **optional but recommended**, the installer can still run without it
+- [ ] OpenAI API key added to `openclaw.json` env.vars
+- [ ] Gemini API key added to `openclaw.json` env.vars (or ready to pass via `--gemini-key`)
 
 ### Install
 
@@ -210,9 +250,11 @@ The system watches completed sessions and automatically generates reusable skill
 
 Both interfaces contribute to and retrieve from the same memory. Facts from Claude Code sessions are tagged `[src:claude-code]` for provenance.
 
-## Multi-User Support
+## Multi-User Support (Experimental)
 
-Multiple people can share one agent's memory:
+> ⚠️ **Experimental — partially implemented in v3.2.1.** The installer scaffolds per-user session directories, Unix group permissions, and separate Claude Code home directories for each team member. **However, the runtime capture scripts currently write all sessions to `agents/claude-code/sessions/` regardless of which user ran them**, so per-user session isolation and source tagging (`[src:claude-code-employee1]`) are not yet working as documented. Full multi-tenant support is planned for **v3.3.0**. For now, multi-user mode is safe to install but behaves identically to single-user mode at the session-capture level.
+
+The intended model: one OpenClaw agent serves multiple team members, each with their own Claude Code CLI on the same server. Three employees could each run `claude` from their own Linux account and contribute to the same shared knowledge base.
 
 ```bash
 bash install.sh \
@@ -220,11 +262,24 @@ bash install.sh \
   --workspace /home/user/agent \
   --port 3050 \
   --user employee1 \
-  --shared
+  --shared \
+  --claude-home /home/employee1/.claude
 
-# Each user's sessions are tagged separately:
-# [src:claude-code-employee1], [src:claude-code-employee2], etc.
+# Repeat for each employee with their own --user and --claude-home
 ```
+
+**What currently works:**
+- Shared workspace with Unix group permissions (`--shared`)
+- Separate Claude Code config directories per Linux user (`--claude-home`)
+- Per-user session directory creation under `agents/claude-code-<user>/`
+- Shared access to the same memory, skills, and wiki
+
+**What's not yet wired up:**
+- Runtime isolation of sessions by user (all sessions currently go into `agents/claude-code/sessions/`)
+- Per-user source tagging on extracted facts (all facts tagged `[src:claude-code]`)
+- Per-user session sweep directory scanning
+
+Track v3.3.0 for full multi-tenant support.
 
 ## Remote Access (MCP Server)
 
@@ -335,6 +390,24 @@ See [CHANGELOG.md](CHANGELOG.md) for what changes between versions.
 | Linux (Ubuntu/Debian) | Fully supported |
 | macOS | Fully supported |
 | Windows WSL | Supported |
+
+## Troubleshooting & Known Issues
+
+Hit a snag during install or after your first dreaming run? Check:
+
+- **[docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md)** — Symptom → diagnosis → fix for every issue we've seen in real-world installs.
+- **[docs/KNOWN-ISSUES.md](docs/KNOWN-ISSUES.md)** — Upstream OpenClaw bugs that affect FlipClaw, with workarounds that ship with the toolkit.
+
+Common symptoms and quick fixes:
+
+| Symptom | Most likely cause | Fix |
+|---------|-------------------|-----|
+| `openclaw memory status` shows `Provider: none` | Gemini API key missing | Add `GEMINI_API_KEY` to `openclaw.json` env.vars |
+| `memory-core: plugin disabled` in gateway logs | Memory slot not set or plugin allow list excludes it | Re-run v3.2.1+ installer — pre-flight auto-fixes this |
+| Dreaming never runs nightly | OpenClaw 2026.4.x reconciler bug | v3.2.1+ ships `ensure-dreaming-cron.sh` workaround automatically |
+| `Invalid config: Unrecognized key "primary"` | Legacy auth config field | v3.2.1+ installer auto-sanitizes |
+| `Bridge import synced 0 artifacts` in wiki | Upstream OpenClaw bug | Use `openclaw wiki ingest <file>` for manual imports |
+| `Duplicate plugin id detected` warnings | Old `openclaw-mem0` extension directory | v3.2.1+ installer auto-moves conflicting directories aside |
 
 ## Roadmap
 

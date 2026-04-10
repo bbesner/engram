@@ -42,6 +42,11 @@ echo "   Version: $CC_VERSION"
 echo ""
 
 # 2. Check SessionEnd hook
+# v3.2.1 Bug #10 fix: handle both flat and nested hook structures.
+# Claude Code supports two formats:
+#   Flat:   { "SessionEnd": [ { "type": "command", "command": "..." } ] }
+#   Nested: { "SessionEnd": [ { "hooks": [ { "type": "command", "command": "..." } ] } ] }
+# The previous check only looked at se[0].command and missed the nested form.
 echo "2. SessionEnd Hook"
 SETTINGS="$CLAUDE_HOME/settings.json"
 if [ -f "$SETTINGS" ]; then
@@ -50,10 +55,17 @@ import json
 d = json.load(open('$SETTINGS'))
 hooks = d.get('hooks', {})
 se = hooks.get('SessionEnd', [])
-if se:
-    print(se[0].get('command', 'NO COMMAND'))
-else:
+if not se:
     print('NOT CONFIGURED')
+else:
+    # Try flat form first (direct command)
+    cmd = se[0].get('command', '') if isinstance(se[0], dict) else ''
+    # Then try nested form (hooks array inside a matcher entry)
+    if not cmd and isinstance(se[0], dict) and 'hooks' in se[0]:
+        nested = se[0].get('hooks', [])
+        if nested and isinstance(nested[0], dict):
+            cmd = nested[0].get('command', '')
+    print(cmd or 'NO COMMAND')
 " 2>/dev/null)
     if [[ "$HOOK" == *"claude-code-bridge.py"* ]]; then
         check "SessionEnd hook configured" "pass" ""
