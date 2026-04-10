@@ -5,6 +5,10 @@
 
 set +e  # Don't exit on errors — we handle them with check()
 
+# Paths baked in at install time by the installer via sed substitution
+WORKSPACE="{{WORKSPACE}}"
+CLAUDE_HOME="{{CLAUDE_HOME}}"
+
 RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
@@ -175,10 +179,21 @@ echo "10. FlipClaw Version"
 INSTALLED_FC_VERSION=$(cat "$WORKSPACE/.toolkit-version" 2>/dev/null | head -1 || echo "unknown")
 echo "    Installed: $INSTALLED_FC_VERSION"
 LATEST_FC_VERSION=$(curl -sf --max-time 8 "https://raw.githubusercontent.com/bbesner/flipclaw/main/VERSION" | head -1 2>/dev/null)
+
+_fc_version_gte() {
+    local a b
+    a=$(echo "$1" | sed 's/^v//')
+    b=$(echo "$2" | sed 's/^v//')
+    [ "$(printf '%s\n%s\n' "$a" "$b" | sort -V | head -1)" = "$b" ]
+}
+
 if [ -z "$LATEST_FC_VERSION" ]; then
     check "FlipClaw version check" "warn" "Could not reach GitHub (offline or rate-limited)"
 elif [ "$INSTALLED_FC_VERSION" = "$LATEST_FC_VERSION" ]; then
     check "FlipClaw $INSTALLED_FC_VERSION (up to date)" "pass" ""
+elif _fc_version_gte "$INSTALLED_FC_VERSION" "$LATEST_FC_VERSION"; then
+    # Installed is ahead of remote — pass (dev machine or feature branch scenario)
+    check "FlipClaw $INSTALLED_FC_VERSION (ahead of main $LATEST_FC_VERSION)" "pass" ""
 else
     check "FlipClaw update available: $INSTALLED_FC_VERSION → $LATEST_FC_VERSION" "warn" \
         "Run: bash $WORKSPACE/scripts/flipclaw-update.sh"

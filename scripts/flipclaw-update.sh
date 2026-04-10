@@ -412,6 +412,16 @@ echo "  Installed: $INSTALLED_VERSION"
 echo "  Latest:    $LATEST_VERSION"
 echo ""
 
+# Determine update direction (only matters when not pinning)
+UPDATE_DIRECTION="same"
+if [ "$INSTALLED_VERSION" != "$LATEST_VERSION" ]; then
+    if version_gte "$LATEST_VERSION" "$INSTALLED_VERSION"; then
+        UPDATE_DIRECTION="newer"
+    else
+        UPDATE_DIRECTION="older"
+    fi
+fi
+
 if [ "$INSTALLED_VERSION" = "$LATEST_VERSION" ] && [ "$CHECK_ONLY" = false ] && [ -z "$PIN_VERSION" ]; then
     echo -e "${GREEN}Already up to date ($INSTALLED_VERSION). Nothing to do.${NC}"
     echo ""
@@ -421,21 +431,43 @@ if [ "$INSTALLED_VERSION" = "$LATEST_VERSION" ] && [ "$CHECK_ONLY" = false ] && 
 fi
 
 if [ "$CHECK_ONLY" = true ]; then
-    if [ "$INSTALLED_VERSION" != "$LATEST_VERSION" ]; then
-        echo -e "${YELLOW}Update available: $INSTALLED_VERSION → $LATEST_VERSION${NC}"
-        echo ""
-        echo "Run to update:"
-        echo "  bash $WORKSPACE/scripts/flipclaw-update.sh"
-        touch /tmp/flipclaw-update-available 2>/dev/null
-    else
-        echo -e "${GREEN}Up to date ($INSTALLED_VERSION)${NC}"
-    fi
+    case "$UPDATE_DIRECTION" in
+        newer)
+            echo -e "${YELLOW}Update available: $INSTALLED_VERSION → $LATEST_VERSION${NC}"
+            echo ""
+            echo "Run to update:"
+            echo "  bash $WORKSPACE/scripts/flipclaw-update.sh"
+            touch /tmp/flipclaw-update-available 2>/dev/null
+            ;;
+        older)
+            echo -e "${GREEN}Up to date ($INSTALLED_VERSION)${NC}"
+            echo "  (remote is $LATEST_VERSION — you are ahead of main)"
+            ;;
+        same)
+            echo -e "${GREEN}Up to date ($INSTALLED_VERSION)${NC}"
+            ;;
+    esac
     exit 0
 fi
 
-# Warn if downgrading
+# If remote is older and we're not pinning, refuse to "update" backward
+if [ "$UPDATE_DIRECTION" = "older" ] && [ -z "$PIN_VERSION" ]; then
+    echo -e "${GREEN}Already up to date ($INSTALLED_VERSION is newer than remote $LATEST_VERSION)${NC}"
+    echo ""
+    echo "To explicitly downgrade, use:"
+    echo "  bash $WORKSPACE/scripts/flipclaw-update.sh --version $LATEST_VERSION"
+    exit 0
+fi
+
+# Warn if user is explicitly downgrading via --version
 if [ -n "$PIN_VERSION" ] && ! version_gte "$LATEST_VERSION" "$INSTALLED_VERSION"; then
     echo -e "${YELLOW}WARNING: You are downgrading from $INSTALLED_VERSION to $LATEST_VERSION${NC}"
+    read -p "Continue? (y/N) " -n 1 -r
+    echo
+    if [[ ! $REPLY =~ ^[Yy]$ ]]; then
+        echo "Cancelled."
+        exit 0
+    fi
 fi
 
 if [ "$DRY_RUN" = false ]; then

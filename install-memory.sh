@@ -246,14 +246,51 @@ echo -e "${BLUE}Step 2: Snapshot existing state${NC}"
 
 # Unified backup location used by installer and flipclaw-update.sh
 BACKUP_ROOT="$WORKSPACE/.flipclaw-backups"
-PREV_VERSION=$(cat "$WORKSPACE/.toolkit-version" 2>/dev/null | head -1 || echo "unknown")
-BACKUP_DIR="$BACKUP_ROOT/v${PREV_VERSION}-$(date +%Y%m%d-%H%M%S)"
+PREV_VERSION=$(cat "$WORKSPACE/.toolkit-version" 2>/dev/null | head -1)
+if [ -z "$PREV_VERSION" ]; then
+    # Fresh install — no previous version to snapshot
+    BACKUP_DIR="$BACKUP_ROOT/pre-install-$(date +%Y%m%d-%H%M%S)"
+    IS_FRESH_INSTALL=true
+else
+    BACKUP_DIR="$BACKUP_ROOT/v${PREV_VERSION}-$(date +%Y%m%d-%H%M%S)"
+    IS_FRESH_INSTALL=false
+fi
 
 # Also keep a pre-install safety copy of memory/skills in the parent directory
 # (separate from rollback snapshots because these are large)
 DATA_BACKUP_DIR="$(dirname "$WORKSPACE")/backups/memory-pre-install-$(date +%Y%m%d-%H%M%S)"
 
-if [ "$DRY_RUN" = false ]; then
+if [ "$DRY_RUN" = true ]; then
+    if [ "$IS_FRESH_INSTALL" = true ]; then
+        echo "  Fresh install — no previous state to snapshot"
+    else
+        echo "  Would create rollback snapshot at: $BACKUP_ROOT/v${PREV_VERSION}-<timestamp>/"
+    fi
+    echo "  Would create data backup at: $DATA_BACKUP_DIR"
+elif [ "$IS_FRESH_INSTALL" = true ]; then
+    echo "  Fresh install — no previous state to snapshot"
+
+    # Still back up any pre-existing data files (memory/skills) for safety
+    if [ -d "$WORKSPACE/memory" ] || [ -f "$WORKSPACE/MEMORY.md" ] || [ -d "$WORKSPACE/skills" ]; then
+        mkdir -p "$DATA_BACKUP_DIR"
+        if [ -d "$WORKSPACE/memory" ]; then
+            cp -r "$WORKSPACE/memory" "$DATA_BACKUP_DIR/memory" 2>/dev/null
+            echo "  Data backup: memory/ → $DATA_BACKUP_DIR/memory/"
+        fi
+        if [ -f "$WORKSPACE/MEMORY.md" ]; then
+            cp "$WORKSPACE/MEMORY.md" "$DATA_BACKUP_DIR/MEMORY.md"
+            echo "  Data backup: MEMORY.md"
+        fi
+        if [ -f "$OC_CONFIG" ]; then
+            cp "$OC_CONFIG" "$DATA_BACKUP_DIR/openclaw.json"
+        fi
+        if [ -d "$WORKSPACE/skills" ]; then
+            cp -r "$WORKSPACE/skills" "$DATA_BACKUP_DIR/skills" 2>/dev/null
+            echo "  Data backup: skills/"
+        fi
+    fi
+else
+    # Upgrade install — snapshot existing state for rollback
     mkdir -p "$BACKUP_DIR/scripts" "$BACKUP_DIR/extensions"
 
     # Snapshot scripts (for rollback)
@@ -330,9 +367,6 @@ PYEOF
         cp -r "$WORKSPACE/skills" "$DATA_BACKUP_DIR/skills" 2>/dev/null
         echo "  Data backup: skills/"
     fi
-else
-    echo "  Would create rollback snapshot at: $BACKUP_ROOT/v${PREV_VERSION}-<timestamp>/"
-    echo "  Would create data backup at: $DATA_BACKUP_DIR"
 fi
 
 # ──────────────────────────────────────────────────────────────
