@@ -1,8 +1,10 @@
 # FlipClaw Architecture Reference
 
-**Version:** 3.0.0 | **Last updated:** 2026-04-09
+**Version:** 3.2.0 | **Last updated:** 2026-04-10
 
-This document is a comprehensive technical deep-dive into FlipClaw's internals. It covers every layer of the memory system, every pipeline stage, and every configuration surface. Read this if you want to understand exactly how FlipClaw works before adopting it.
+This document is a comprehensive technical deep-dive into FlipClaw's internals. It covers every layer of the memory system, every pipeline stage, every configuration surface, and the update/backup lifecycle. Read this if you want to understand exactly how FlipClaw works before adopting it.
+
+**Minimum OpenClaw version:** `2026.4.9` — required for `memory-core` Dreaming, `memory-wiki` bridge mode, and `continuation-skip` context injection. All installers verify this before making changes.
 
 ---
 
@@ -702,6 +704,222 @@ Recommended schedule: run every 6 hours via OpenClaw cron, with failure notifica
 
 ---
 
+## Update and Backup Lifecycle
+
+FlipClaw 3.2.0+ ships with a self-service updater (`flipclaw-update.sh`) that handles version upgrades, downgrades, and rollback. The same backup mechanism is used by the installers and the updater to ensure every state transition is recoverable.
+
+### Install Params File
+
+Location: `$WORKSPACE/.flipclaw-install.json`
+
+Written by the installer at install time, this file is the single source of truth for future updates. It stores everything the updater needs to re-render templates with the user's original choices:
+
+```json
+{
+  "flipclaw_version": "3.2.0",
+  "openclaw_version": "2026.4.9",
+  "installed_at": "2026-04-10",
+  "workspace": "/home/user/agent",
+  "agent_name": "MyAgent",
+  "port": "3050",
+  "claude_home": "/home/user/.claude",
+  "user_id": "",
+  "session_source": "claude-code",
+  "shared": false,
+  "with_mcp": false,
+  "models": {
+    "capture_model": "gpt-5.4-nano",
+    "capture_provider": "openai",
+    "writer_model": "gpt-5.4-mini",
+    "writer_provider": "openai",
+    "extraction_model": "gpt-5.4-mini",
+    "generation_model": "gpt-5.4-mini",
+    "skill_provider": "openai",
+    "embedding_provider": "gemini",
+    "embedding_model": "gemini-embedding-001"
+  },
+  "update_history": [
+    {
+      "from": "fresh-install",
+      "to": "3.0.0",
+      "at": "2026-04-09T14:22:10Z",
+      "openclaw_version": "2026.4.9",
+      "trigger": "install-memory"
+    },
+    {
+      "from": "3.0.0",
+      "to": "3.2.0",
+      "at": "2026-04-10T09:15:44Z",
+      "openclaw_version": "2026.4.9",
+      "trigger": "updater"
+    }
+  ]
+}
+```
+
+The `update_history` array is capped at the last 50 entries and logs every version transition — useful for debugging when users report issues months after install.
+
+### Unified Backup Directory
+
+Location: `$WORKSPACE/.flipclaw-backups/`
+
+Every installer run (on upgrade only) and every updater run creates a timestamped snapshot directory under this root:
+
+```
+.flipclaw-backups/
+├── v3.0.0-20260410-091500/
+│   ├── backup-meta.json
+│   ├── openclaw.json
+│   ├── .toolkit-version
+│   ├── .flipclaw-install.json
+│   ├── scripts/
+│   │   ├── claude-code-bridge.py
+│   │   ├── claude-code-sweep.py
+│   │   ├── claude-code-turn-capture.py
+│   │   ├── claude-code-update-check.sh
+│   │   ├── flipclaw-update.sh
+│   │   ├── incremental-memory-capture.py
+│   │   ├── memory-writer.py
+│   │   ├── lockutil.py
+│   │   ├── curate-memory-prompt.md
+│   │   └── index-daily-logs-prompt.md
+│   └── extensions/
+│       ├── auto-skill-capture/
+│       │   ├── index.ts
+│       │   ├── openclaw.plugin.json
+│       │   ├── package.json
+│       │   └── scripts/skill-extractor.py
+│       └── memory-bridge/
+│           ├── index.ts
+│           └── openclaw.plugin.json
+├── v3.1.0-20260410-113000/
+└── v3.2.0-20260410-091544/
+```
+
+Each snapshot includes:
+
+| Contents | Why |
+|----------|-----|
+| All scripts | Restoration targets — these are what the updater rewrites |
+| Both extensions with manifests | Same reason — updater rewrites these |
+| `.toolkit-version`, `.flipclaw-install.json` | State files |
+| `openclaw.json` | Safety net — updater doesn't modify it, but snapshotted anyway |
+| `backup-meta.json` | Metadata: `{version, created_at, trigger, workspace, openclaw_version}` |
+
+**What is NOT snapshotted:**
+- `memory/` files — never touched by updates, far too large
+- `MEMORY.md` — never touched
+- `skills/` — user content, never touched
+- `wiki/` and `memory/dreaming/` — generated content
+
+A separate "data backup" (under `$(dirname $WORKSPACE)/backups/memory-pre-install-{timestamp}/`) is created by the installer on upgrade as an extra safety net for `memory/`, `skills/`, and `MEMORY.md`. This is separate from the rollback snapshots because the files are large and the updater never touches them — this is purely a belt-and-suspenders safeguard.
+
+### Backup Retention
+
+The 10 most recent snapshots are kept. Older snapshots are automatically pruned on every new snapshot creation. This is enforced by both the installer (during upgrade) and the updater.
+
+### Fresh Install vs Upgrade Install
+
+The installer detects whether this is a fresh install (`.toolkit-version` does not exist) or an upgrade (it exists):
+
+- **Fresh install:** No rollback snapshot is created (nothing to snapshot). Only the data backup runs if any pre-existing `memory/`, `skills/`, or `MEMORY.md` files exist.
+- **Upgrade install:** Full rollback snapshot is created before any file is modified. All scripts and extensions are captured.
+
+This avoids creating spurious empty `vunknown-{timestamp}` directories on fresh installs.
+
+### Update Flow
+
+The updater (`flipclaw-update.sh`) follows this sequence:
+
+```
+1. Verify OpenClaw >= 2026.4.9           (fail fast)
+2. Read .flipclaw-install.json           (user params)
+3. Check versions (local vs GitHub)      (semver comparison)
+4. Download toolkit archive              (3 retries on transient failure)
+5. Create snapshot                       (.flipclaw-backups/v{prev}-{ts}/)
+6. Apply updated scripts                 (sed-render with user params)
+7. Apply updated extensions              (same)
+8. Handle prompt templates                (smart diff — see below)
+9. Update .toolkit-version               (to downloaded version)
+10. Update .flipclaw-install.json         (version + history entry)
+11. Validate                              (Python/shell syntax checks)
+12. If validation fails: offer rollback   (interactive y/N)
+```
+
+### Smart Prompt Template Handling
+
+`curate-memory-prompt.md` and `index-daily-logs-prompt.md` are templates users may customize. The updater treats them carefully:
+
+- **Template missing on disk:** Install fresh (normal path)
+- **Template matches current source:** Mark as unchanged, no action
+- **Template matches previous backup (unmodified by user):** Safe to update silently
+- **Template differs from previous backup (user-modified):** Preserve the user's version, save the new version as `{name}.new` alongside, print a diff suggestion
+
+This avoids the two bad outcomes: silently stomping user customizations, or never shipping improved templates.
+
+### Post-Update Validation
+
+After applying changes, the updater runs:
+
+- `python3 -m py_compile` on every installed Python script
+- `bash -n` on every installed shell script
+
+If any check fails, the updater prints the failure and prompts:
+
+```
+Validation failed (1 issue(s) detected)
+
+The update may have left your installation in a broken state.
+Rollback now? (Y/n)
+```
+
+Pressing `Y` (or just Enter) immediately restores the pre-update snapshot. The user stays on the previous working version with no manual recovery needed.
+
+### Rollback Flow
+
+The `--rollback` flag restores the most recent snapshot:
+
+```
+1. List .flipclaw-backups/ by mtime, select most recent
+2. Show version, created_at, trigger from backup-meta.json
+3. Snapshot current state as "pre-rollback" (safety net for failed rollback)
+4. Interactive confirmation (y/N)
+5. Restore all scripts with executable bit
+6. Restore extensions
+7. Restore state files (.toolkit-version, .flipclaw-install.json)
+```
+
+The "pre-rollback" snapshot means even a broken rollback is recoverable. If restoring the backup leaves the system in a worse state, the user can run `--rollback` again to get back to where they were before the initial rollback attempt.
+
+### Version Detection Semantics
+
+Both the updater and the health check use proper semver comparison (via `sort -V`), not string equality. This correctly handles these cases:
+
+- **Remote newer than installed:** "Update available"
+- **Remote matches installed:** "Up to date"
+- **Remote older than installed:** "Up to date (ahead of main)" — the updater refuses to "update" backward without explicit `--version` pin
+- **Explicit `--version` downgrade:** Interactive confirmation required
+
+### OpenClaw Version Enforcement
+
+All three installers (`install-memory.sh`, `install-claude-code.sh`) and the updater verify OpenClaw >= `2026.4.9` before making any changes. If OpenClaw is missing or too old, the script exits immediately with a clear message and upgrade command:
+
+```
+ERROR: OpenClaw 2026.4.8 is too old.
+
+FlipClaw requires OpenClaw 2026.4.9 or later for:
+  - memory-core Dreaming (light/deep/REM phases)
+  - memory-wiki plugin (bridge mode)
+  - continuation-skip context injection
+
+Upgrade OpenClaw:
+  npm install -g openclaw@latest
+```
+
+The installed OpenClaw version is recorded in `.flipclaw-install.json` as `openclaw_version` and updated on every installer and updater run. The health check (check #11) verifies this on every run.
+
+---
+
 ## Multi-User Support
 
 Multiple people can share one agent's memory system. Each user runs their own Claude Code CLI but contributes to and reads from the same knowledge base.
@@ -798,9 +1016,10 @@ Chunks are stored on disk at `logs/.mcp-chunks/` and cleaned up after reassembly
 | File | Description |
 |------|-------------|
 | `install.sh` | Combined installer -- runs install-memory.sh then install-claude-code.sh |
-| `install-memory.sh` | Memory pipeline installer: capture scripts, extensions, Dreaming, Wiki, search config |
-| `install-claude-code.sh` | Claude Code integration installer: hooks, bridge, sweep, health check, CLAUDE.md |
+| `install-memory.sh` | Memory pipeline installer: capture scripts, extensions, Dreaming, Wiki, search config. Enforces OpenClaw >= 2026.4.9. Creates rollback snapshots on upgrade. |
+| `install-claude-code.sh` | Claude Code integration installer: hooks, bridge, sweep, health check, updater, CLAUDE.md. Enforces OpenClaw >= 2026.4.9. |
 | `VERSION` | Toolkit version (semver + date) |
+| `CHANGELOG.md` | Keep-a-changelog format release notes |
 | `README.md` | User-facing documentation and quick start guide |
 | `CONTRIBUTING.md` | Contribution guidelines |
 | `LICENSE` | MIT license |
@@ -813,7 +1032,8 @@ Chunks are stored on disk at `logs/.mcp-chunks/` and cleaned up after reassembly
 | `claude-code-bridge.py` | SessionEnd hook handler -- converts Claude Code transcripts, manages resume detection, rate limiting, triggers skill extraction |
 | `claude-code-turn-capture.py` | Stop hook handler -- per-turn fact extraction during active Claude Code sessions |
 | `claude-code-sweep.py` | Cron job -- catches sessions missed by the SessionEnd hook (crashes, force-kills) |
-| `claude-code-update-check.sh` | 12-point health check script for verifying integration integrity |
+| `claude-code-update-check.sh` | 11-point health check script including FlipClaw version (#10) and OpenClaw minimum version (#11) |
+| `flipclaw-update.sh` | Self-service updater with snapshot backups, post-update validation, rollback, and version pinning |
 | `claude-code-bridge-remote.sh` | Helper script for remote bridge invocation |
 | `incremental-memory-capture.py` | Core fact extraction engine -- reads session windows, classifies, calls LLM, routes facts to memory files |
 | `memory-writer.py` | Legacy manual backfill tool -- writes structured memory from daily logs (not part of active pipeline) |
@@ -821,6 +1041,14 @@ Chunks are stored on disk at `logs/.mcp-chunks/` and cleaned up after reassembly
 | `lockutil.py` | File-based locking utility using fcntl.flock -- prevents concurrent write corruption |
 | `curate-memory-prompt.md` | LLM prompt template for manual memory curation (legacy reference) |
 | `index-daily-logs-prompt.md` | LLM prompt template for daily log indexing (legacy reference) |
+
+### State files (written to `$WORKSPACE/` at install/update time)
+
+| File | Description |
+|------|-------------|
+| `.toolkit-version` | Installed FlipClaw version marker (one line, e.g. `3.2.0`) |
+| `.flipclaw-install.json` | Install params (agent, port, workspace, models, OpenClaw version) and update history |
+| `.flipclaw-backups/` | Rollback snapshot directory — 10 most recent kept, auto-pruned |
 
 ### extensions/
 

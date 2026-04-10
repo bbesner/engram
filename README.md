@@ -39,6 +39,7 @@ What you get:
 - **Cron jobs, heartbeats, and scheduled tasks** via OpenClaw, accessible from Claude Code
 - **Remote access via Telegram** — multi-session Claude Code from your phone, not limited to Anthropic's single QR-code session (pair with [claude-telegram-relay](https://github.com/bbesner/claude-telegram-relay))
 - **Flexible deployment** — Claude Code and OpenClaw on the same machine (local, server, or VPS) for the tightest integration, or split across two machines with the MCP server connection. Same shared memory either way.
+- **Self-service updates** — one-command updater with full snapshot backups, dry-run preview, post-update validation, and automatic rollback on failure. Stay current without re-running the installer.
 
 All on your existing Claude Max subscription. No API charges.
 
@@ -142,7 +143,8 @@ cd /home/user/agent && openclaw memory search "what I worked on today"
 | **claude-code-bridge.py** | Session-end capture — saves transcript, triggers skill extraction |
 | **claude-code-turn-capture.py** | Per-turn capture via Stop hook — extracts facts after every response |
 | **claude-code-sweep.py** | Catches sessions hooks missed (crashes, force-kills) |
-| **claude-code-update-check.sh** | 12-point health check with alerting |
+| **claude-code-update-check.sh** | 11-point health check including OpenClaw and FlipClaw version checks |
+| **flipclaw-update.sh** | Self-service updater with snapshot backups and rollback support |
 | **lockutil.py** | Prevents concurrent write corruption |
 | **CLAUDE.md** | Instructions that make Claude Code use the shared memory |
 | **MCP server** (optional) | Remote memory access: search, read, write tools |

@@ -69,7 +69,12 @@ Versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
-- Updater would fail on macOS default bash (3.2) due to bash 4.x parameter expansion syntax in the final "next steps" hint.
+- **`claude-code-update-check.sh` pre-existing bug:** `$WORKSPACE` and `$CLAUDE_HOME` were referenced throughout the script but never initialized. The script silently relied on the caller's environment having them set, which was unreliable. Now baked in at install time via template placeholders that the installer's sed substitution fills in.
+- **Version comparison used string equality instead of semver** (check #10 and updater `--check`). This incorrectly reported "update available: 3.2.0 → 3.0.0" when the installed version was actually newer than main. Now uses `sort -V` for proper semver ordering and correctly distinguishes "update available," "up to date," and "ahead of main."
+- **Fresh installs created a spurious `vunknown-{timestamp}` backup directory** because `.toolkit-version` didn't exist yet. The installer now detects fresh installs via an `IS_FRESH_INSTALL` flag and skips the rollback snapshot (nothing to snapshot) while still creating the data backup if any pre-existing memory files are present.
+- **Missing refusal for accidental backward "update":** If the user ran the updater without `--version` and the remote happened to be older than installed, the updater would try to "update" backward. Now correctly reports "up to date" and suggests using `--version` for explicit downgrade.
+- **Missing confirmation on explicit downgrade:** The updater had a warning but would still proceed when `--version` pinned to an older version. Now requires interactive `y/N` confirmation before proceeding with a downgrade.
+- **Updater would fail on macOS default bash (3.2)** due to bash 4.x parameter expansion syntax (`${var,,}`) in the final "next steps" hint. Now uses `tr '[:upper:]' '[:lower:]'` which works on all bash versions.
 
 ### Prerequisites
 
