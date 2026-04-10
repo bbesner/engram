@@ -169,6 +169,45 @@ else
     check "Settings backup" "warn" "No backup found at $BACKUP — create one with: cp $SETTINGS $BACKUP"
 fi
 
+# 10. FlipClaw version check
+echo ""
+echo "10. FlipClaw Version"
+INSTALLED_FC_VERSION=$(cat "$WORKSPACE/.toolkit-version" 2>/dev/null | head -1 || echo "unknown")
+echo "    Installed: $INSTALLED_FC_VERSION"
+LATEST_FC_VERSION=$(curl -sf --max-time 8 "https://raw.githubusercontent.com/bbesner/flipclaw/main/VERSION" | head -1 2>/dev/null)
+if [ -z "$LATEST_FC_VERSION" ]; then
+    check "FlipClaw version check" "warn" "Could not reach GitHub (offline or rate-limited)"
+elif [ "$INSTALLED_FC_VERSION" = "$LATEST_FC_VERSION" ]; then
+    check "FlipClaw $INSTALLED_FC_VERSION (up to date)" "pass" ""
+else
+    check "FlipClaw update available: $INSTALLED_FC_VERSION → $LATEST_FC_VERSION" "warn" \
+        "Run: bash $WORKSPACE/scripts/flipclaw-update.sh"
+    # Drop flag file so next session context can surface it
+    touch /tmp/flipclaw-update-available 2>/dev/null
+fi
+
+# 11. OpenClaw minimum version check
+echo ""
+echo "11. OpenClaw Version"
+MIN_OC_VERSION="2026.4.9"
+INSTALLED_OC_VERSION=$(openclaw --version 2>/dev/null | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1)
+
+_version_gte() {
+    local a b
+    a=$(echo "$1" | sed 's/^v//')
+    b=$(echo "$2" | sed 's/^v//')
+    [ "$(printf '%s\n%s\n' "$a" "$b" | sort -V | head -1)" = "$b" ]
+}
+
+if [ -z "$INSTALLED_OC_VERSION" ]; then
+    check "OpenClaw not detected" "fail" "Install OpenClaw: npm install -g openclaw"
+elif _version_gte "$INSTALLED_OC_VERSION" "$MIN_OC_VERSION"; then
+    check "OpenClaw $INSTALLED_OC_VERSION (min: $MIN_OC_VERSION)" "pass" ""
+else
+    check "OpenClaw $INSTALLED_OC_VERSION too old (min: $MIN_OC_VERSION)" "fail" \
+        "Upgrade: npm install -g openclaw@latest"
+fi
+
 # Summary
 echo ""
 echo "========================================"

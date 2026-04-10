@@ -82,7 +82,7 @@ Claude Code CLI                    OpenClaw Agent
 ## Quick Start
 
 ### Prerequisites
-- [OpenClaw](https://github.com/openclaw) installed and running
+- **OpenClaw 2026.4.9 or later** (required for memory-core Dreaming, memory-wiki, and continuation-skip). Install with `npm install -g openclaw`. The installer verifies this before making any changes.
 - [Claude Code CLI](https://docs.anthropic.com/en/docs/claude-code) installed
 - Python 3.10+, Node.js 18+
 - An OpenAI API key (for fact extraction via GPT-5.4 Nano — costs pennies)
@@ -261,6 +261,70 @@ Default: daily at 4 AM (configurable in `openclaw.json`):
   }
 }
 ```
+
+## Updating
+
+FlipClaw ships a self-service updater. Once you've installed v3.2.0+, staying current is one command:
+
+```bash
+# Check if an update is available
+bash ~/myagent/scripts/flipclaw-update.sh --check
+
+# Preview what would change
+bash ~/myagent/scripts/flipclaw-update.sh --dry-run
+
+# Apply the update
+bash ~/myagent/scripts/flipclaw-update.sh
+
+# List available backups
+bash ~/myagent/scripts/flipclaw-update.sh --list-backups
+
+# Roll back to the previous version
+bash ~/myagent/scripts/flipclaw-update.sh --rollback
+
+# Pin to a specific version (downgrade or reinstall)
+bash ~/myagent/scripts/flipclaw-update.sh --version 3.3.0
+```
+
+**What the updater does:**
+1. Verifies OpenClaw is at the minimum required version
+2. Reads your saved install params (`.flipclaw-install.json`) — no flags to remember
+3. Downloads the latest toolkit from GitHub (with automatic retry on transient failures)
+4. Creates a full snapshot under `.flipclaw-backups/v{old-version}-{timestamp}/` including scripts, extensions, state files, and `openclaw.json`
+5. Re-applies each script template with your original values (workspace path, agent name, models, etc.)
+6. Updates `.toolkit-version` and `.flipclaw-install.json` (including update history)
+7. **Validates the update** — runs Python and shell syntax checks on all installed scripts. If anything broke, prompts to automatically roll back.
+8. Clears the update-available flag
+
+**Automatic rollback on failure:** If post-update validation detects broken scripts (syntax errors, missing files), the updater offers to immediately restore the backup it just created. No manual recovery needed.
+
+**Update history** is tracked in `.flipclaw-install.json` — every update logs `{from, to, at, openclaw_version, trigger}`. Useful for debugging if you need to figure out what changed when.
+
+**Backup retention** — The updater keeps your 10 most recent backups and automatically prunes older ones. Each backup includes everything needed to restore: scripts, extensions, state files, and a metadata file recording when/why it was made.
+
+**What the updater never touches:**
+- `memory/` files — your knowledge base is never modified
+- `MEMORY.md` — preserved
+- `openclaw.json` — not touched (but snapshotted into backups for safety)
+- `CLAUDE.md` — not touched
+- Prompt templates (`curate-memory-prompt.md`, `index-daily-logs-prompt.md`) — if you've modified them, the new version is saved as `.new` alongside the original so you can review and merge manually
+
+**Version notifications** are surfaced automatically. The health check script (`claude-code-update-check.sh`) runs every 6 hours via cron and checks GitHub for a newer VERSION file. When one is found, it prints a warning with the update command and writes `/tmp/flipclaw-update-available` as a flag.
+
+**Upgrading from v3.0.0 / v3.1.0** (before the updater existed): re-run the installer with your original flags and `--skip-openclaw`, then the updater will be installed for future use:
+
+```bash
+git clone https://github.com/bbesner/flipclaw.git flipclaw-new
+bash flipclaw-new/install.sh \
+  --agent-name "YourAgent" \
+  --workspace /path/to/your/agent \
+  --port YOUR_PORT \
+  --skip-openclaw
+```
+
+See [CHANGELOG.md](CHANGELOG.md) for what changes between versions.
+
+---
 
 ## Supported Platforms
 

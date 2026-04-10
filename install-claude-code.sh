@@ -1,7 +1,7 @@
 #!/bin/bash
 # ============================================================================
 # Claude Code ↔ OpenClaw Memory Integration Installer
-# Version: 1.0.0 (2026-04-08)
+# Version: 3.2.0 (2026-04-10)
 #
 # Installs the memory integration pipeline that connects Claude Code CLI
 # to an OpenClaw agent's memory system. Supports three deployment modes:
@@ -128,6 +128,41 @@ if [ -z "$AGENT_NAME" ] || [ -z "$WORKSPACE" ] || [ -z "$PORT" ]; then
     usage
 fi
 
+# ──────────────────────────────────────────────────────────────
+# Prerequisite: OpenClaw minimum version
+# ──────────────────────────────────────────────────────────────
+
+MIN_OPENCLAW_VERSION="2026.4.9"
+
+version_gte() {
+    local a b
+    a=$(echo "$1" | sed 's/^v//')
+    b=$(echo "$2" | sed 's/^v//')
+    [ "$(printf '%s\n%s\n' "$a" "$b" | sort -V | head -1)" = "$b" ]
+}
+
+OPENCLAW_VERSION=$(openclaw --version 2>/dev/null | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1)
+
+if [ -z "$OPENCLAW_VERSION" ]; then
+    echo -e "${RED}ERROR: OpenClaw is not installed or not in PATH.${NC}"
+    echo ""
+    echo "Install OpenClaw first:"
+    echo "  npm install -g openclaw"
+    echo ""
+    echo "Minimum required version: $MIN_OPENCLAW_VERSION"
+    exit 1
+fi
+
+if ! version_gte "$OPENCLAW_VERSION" "$MIN_OPENCLAW_VERSION"; then
+    echo -e "${RED}ERROR: OpenClaw $OPENCLAW_VERSION is too old.${NC}"
+    echo ""
+    echo "FlipClaw requires OpenClaw $MIN_OPENCLAW_VERSION or later."
+    echo ""
+    echo "Upgrade OpenClaw:"
+    echo "  npm install -g openclaw@latest"
+    exit 1
+fi
+
 # Pre-flight: verify memory pipeline is installed
 if [ ! -f "$WORKSPACE/scripts/incremental-memory-capture.py" ]; then
     echo -e "${RED}============================================${NC}"
@@ -149,6 +184,7 @@ fi
 echo "============================================"
 echo -e "${BLUE}Claude Code ↔ OpenClaw Memory Integration${NC}"
 echo "Toolkit version: $TOOLKIT_VERSION"
+echo "OpenClaw:        $OPENCLAW_VERSION (min: $MIN_OPENCLAW_VERSION)"
 echo "============================================"
 echo ""
 echo "  Agent name:     $AGENT_NAME"
@@ -254,11 +290,18 @@ if [ "$DRY_RUN" = false ]; then
         "$TOOLKIT_DIR/scripts/claude-code-turn-capture.py" > "$WORKSPACE/scripts/claude-code-turn-capture.py"
     chmod +x "$WORKSPACE/scripts/claude-code-turn-capture.py"
     echo "  Installed: $WORKSPACE/scripts/claude-code-turn-capture.py (per-turn capture)"
+
+    # flipclaw-update.sh (self-service updater)
+    sed -e "s|{{WORKSPACE}}|$WORKSPACE|g" \
+        "$TOOLKIT_DIR/scripts/flipclaw-update.sh" > "$WORKSPACE/scripts/flipclaw-update.sh"
+    chmod +x "$WORKSPACE/scripts/flipclaw-update.sh"
+    echo "  Installed: $WORKSPACE/scripts/flipclaw-update.sh (updater)"
 else
     echo "  Would install: claude-code-bridge.py (bridge)"
     echo "  Would install: claude-code-sweep.py (sweep)"
     echo "  Would install: claude-code-update-check.sh (health check)"
     echo "  Would install: claude-code-turn-capture.py (per-turn capture)"
+    echo "  Would install: flipclaw-update.sh (updater)"
 fi
 
 # ──────────────────────────────────────────────────────────────
@@ -616,6 +659,59 @@ MEMORYEOF
     # Version marker for sync tracking
     echo "$TOOLKIT_VERSION" > "$WORKSPACE/.toolkit-version"
     echo "  Written toolkit version marker: $TOOLKIT_VERSION"
+
+    # Install params — merge Claude Code fields into existing file (or create if standalone install)
+    PARAMS_FILE="$WORKSPACE/.flipclaw-install.json"
+    python3 - << PYEOF
+import json, os
+from datetime import date
+
+from datetime import datetime, timezone
+
+PARAMS_FILE = '$PARAMS_FILE'
+if os.path.exists(PARAMS_FILE):
+    with open(PARAMS_FILE) as f:
+        p = json.load(f)
+else:
+    p = {
+        'flipclaw_version': '$TOOLKIT_VERSION',
+        'openclaw_version': '$OPENCLAW_VERSION',
+        'installed_at': date.today().isoformat(),
+        'workspace': '$WORKSPACE',
+        'agent_name': '$AGENT_NAME',
+        'port': '$PORT',
+        'models': {},
+        'update_history': []
+    }
+
+prev_version = p.get('flipclaw_version', 'unknown')
+p['agent_name'] = '$AGENT_NAME'
+p['port'] = '$PORT'
+p['claude_home'] = '$CLAUDE_HOME'
+p['user_id'] = '$USER_ID'
+p['session_source'] = '$SESSION_SOURCE'
+p['shared'] = $( [ "$SHARED" = true ] && echo "True" || echo "False" )
+p['with_mcp'] = $( [ "$WITH_MCP" = true ] && echo "True" || echo "False" )
+p['flipclaw_version'] = '$TOOLKIT_VERSION'
+p['openclaw_version'] = '$OPENCLAW_VERSION'
+
+if prev_version != '$TOOLKIT_VERSION':
+    history = p.get('update_history', [])
+    # Avoid duplicate if memory installer already appended this transition
+    if not (history and history[-1].get('from') == prev_version and history[-1].get('to') == '$TOOLKIT_VERSION'):
+        history.append({
+            'from': prev_version,
+            'to': '$TOOLKIT_VERSION',
+            'at': datetime.now(timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ'),
+            'openclaw_version': '$OPENCLAW_VERSION',
+            'trigger': 'install-claude-code',
+        })
+        p['update_history'] = history[-50:]
+
+with open(PARAMS_FILE, 'w') as f:
+    json.dump(p, f, indent=2)
+PYEOF
+    echo "  Saved install params to .flipclaw-install.json"
 fi
 
 # ──────────────────────────────────────────────────────────────

@@ -1,7 +1,7 @@
 #!/bin/bash
 # ============================================================================
 # Memory System Installer
-# Version: 3.0.0 (2026-04-09)
+# Version: 3.2.0 (2026-04-10)
 #
 # Installs the complete file-based memory pipeline for an OpenClaw agent:
 #   - Incremental memory capture (per-turn fact extraction)
@@ -128,9 +128,48 @@ if [ -z "$AGENT_NAME" ] || [ -z "$WORKSPACE" ] || [ -z "$PORT" ]; then
     usage
 fi
 
+# ──────────────────────────────────────────────────────────────
+# Prerequisite: OpenClaw minimum version
+# ──────────────────────────────────────────────────────────────
+
+MIN_OPENCLAW_VERSION="2026.4.9"
+
+version_gte() {
+    local a b
+    a=$(echo "$1" | sed 's/^v//')
+    b=$(echo "$2" | sed 's/^v//')
+    [ "$(printf '%s\n%s\n' "$a" "$b" | sort -V | head -1)" = "$b" ]
+}
+
+OPENCLAW_VERSION=$(openclaw --version 2>/dev/null | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1)
+
+if [ -z "$OPENCLAW_VERSION" ]; then
+    echo -e "${RED}ERROR: OpenClaw is not installed or not in PATH.${NC}"
+    echo ""
+    echo "Install OpenClaw first:"
+    echo "  npm install -g openclaw"
+    echo ""
+    echo "Minimum required version: $MIN_OPENCLAW_VERSION"
+    exit 1
+fi
+
+if ! version_gte "$OPENCLAW_VERSION" "$MIN_OPENCLAW_VERSION"; then
+    echo -e "${RED}ERROR: OpenClaw $OPENCLAW_VERSION is too old.${NC}"
+    echo ""
+    echo "FlipClaw requires OpenClaw $MIN_OPENCLAW_VERSION or later for:"
+    echo "  - memory-core Dreaming (light/deep/REM phases)"
+    echo "  - memory-wiki plugin (bridge mode)"
+    echo "  - continuation-skip context injection"
+    echo ""
+    echo "Upgrade OpenClaw:"
+    echo "  npm install -g openclaw@latest"
+    exit 1
+fi
+
 echo "============================================"
 echo -e "${BLUE}Memory System Installer${NC}"
 echo "Toolkit version: $TOOLKIT_VERSION"
+echo "OpenClaw:        $OPENCLAW_VERSION (min: $MIN_OPENCLAW_VERSION)"
 echo "============================================"
 echo ""
 echo "  Agent name:       $AGENT_NAME"
@@ -199,44 +238,101 @@ case "$EXISTING_SYSTEM" in
 esac
 
 # ──────────────────────────────────────────────────────────────
-# Step 2: Back up existing data
+# Step 2: Snapshot existing state
 # ──────────────────────────────────────────────────────────────
 
 echo ""
-echo -e "${BLUE}Step 2: Back up existing data${NC}"
+echo -e "${BLUE}Step 2: Snapshot existing state${NC}"
 
-BACKUP_DIR="$(dirname "$WORKSPACE")/backups/memory-pre-install-$(date +%Y%m%d-%H%M%S)"
+# Unified backup location used by installer and flipclaw-update.sh
+BACKUP_ROOT="$WORKSPACE/.flipclaw-backups"
+PREV_VERSION=$(cat "$WORKSPACE/.toolkit-version" 2>/dev/null | head -1 || echo "unknown")
+BACKUP_DIR="$BACKUP_ROOT/v${PREV_VERSION}-$(date +%Y%m%d-%H%M%S)"
+
+# Also keep a pre-install safety copy of memory/skills in the parent directory
+# (separate from rollback snapshots because these are large)
+DATA_BACKUP_DIR="$(dirname "$WORKSPACE")/backups/memory-pre-install-$(date +%Y%m%d-%H%M%S)"
 
 if [ "$DRY_RUN" = false ]; then
-    mkdir -p "$BACKUP_DIR"
+    mkdir -p "$BACKUP_DIR/scripts" "$BACKUP_DIR/extensions"
 
-    # Back up existing memory files
+    # Snapshot scripts (for rollback)
+    if [ -d "$WORKSPACE/scripts" ]; then
+        for f in claude-code-bridge.py claude-code-sweep.py claude-code-turn-capture.py \
+                  claude-code-update-check.sh flipclaw-update.sh incremental-memory-capture.py \
+                  memory-writer.py lockutil.py curate-memory-prompt.md index-daily-logs-prompt.md; do
+            [ -f "$WORKSPACE/scripts/$f" ] && cp "$WORKSPACE/scripts/$f" "$BACKUP_DIR/scripts/$f"
+        done
+    fi
+
+    # Snapshot extensions (for rollback)
+    if [ -d "$WORKSPACE/extensions/auto-skill-capture" ]; then
+        mkdir -p "$BACKUP_DIR/extensions/auto-skill-capture/scripts"
+        for f in index.ts openclaw.plugin.json package.json; do
+            [ -f "$WORKSPACE/extensions/auto-skill-capture/$f" ] && \
+                cp "$WORKSPACE/extensions/auto-skill-capture/$f" "$BACKUP_DIR/extensions/auto-skill-capture/$f"
+        done
+        [ -f "$WORKSPACE/extensions/auto-skill-capture/scripts/skill-extractor.py" ] && \
+            cp "$WORKSPACE/extensions/auto-skill-capture/scripts/skill-extractor.py" \
+               "$BACKUP_DIR/extensions/auto-skill-capture/scripts/skill-extractor.py"
+    fi
+    if [ -d "$WORKSPACE/extensions/memory-bridge" ]; then
+        mkdir -p "$BACKUP_DIR/extensions/memory-bridge"
+        for f in index.ts openclaw.plugin.json; do
+            [ -f "$WORKSPACE/extensions/memory-bridge/$f" ] && \
+                cp "$WORKSPACE/extensions/memory-bridge/$f" "$BACKUP_DIR/extensions/memory-bridge/$f"
+        done
+    fi
+
+    # Snapshot state files
+    [ -f "$WORKSPACE/.toolkit-version" ] && cp "$WORKSPACE/.toolkit-version" "$BACKUP_DIR/.toolkit-version"
+    [ -f "$WORKSPACE/.flipclaw-install.json" ] && cp "$WORKSPACE/.flipclaw-install.json" "$BACKUP_DIR/.flipclaw-install.json"
+    [ -f "$OC_CONFIG" ] && cp "$OC_CONFIG" "$BACKUP_DIR/openclaw.json"
+
+    # Backup metadata
+    python3 - << PYEOF
+import json
+from datetime import datetime, timezone
+meta = {
+    'version': '$PREV_VERSION',
+    'created_at': datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M UTC'),
+    'trigger': 'install-memory',
+    'workspace': '$WORKSPACE',
+    'openclaw_version': '$OPENCLAW_VERSION',
+}
+with open('$BACKUP_DIR/backup-meta.json', 'w') as f:
+    json.dump(meta, f, indent=2)
+PYEOF
+
+    # Prune old backups — keep last 10
+    if [ -d "$BACKUP_ROOT" ]; then
+        ls -1t "$BACKUP_ROOT" 2>/dev/null | tail -n +11 | while read -r old; do
+            rm -rf "$BACKUP_ROOT/$old" 2>/dev/null
+        done
+    fi
+
+    echo "  Rollback snapshot: $BACKUP_DIR"
+
+    # Separate data backup for safety (memory/, skills/, MEMORY.md)
+    mkdir -p "$DATA_BACKUP_DIR"
     if [ -d "$WORKSPACE/memory" ]; then
-        cp -r "$WORKSPACE/memory" "$BACKUP_DIR/memory" 2>/dev/null
-        echo "  Backed up: memory/ → $BACKUP_DIR/memory/"
+        cp -r "$WORKSPACE/memory" "$DATA_BACKUP_DIR/memory" 2>/dev/null
+        echo "  Data backup: memory/ → $DATA_BACKUP_DIR/memory/"
     fi
-
-    # Back up MEMORY.md
     if [ -f "$WORKSPACE/MEMORY.md" ]; then
-        cp "$WORKSPACE/MEMORY.md" "$BACKUP_DIR/MEMORY.md"
-        echo "  Backed up: MEMORY.md"
+        cp "$WORKSPACE/MEMORY.md" "$DATA_BACKUP_DIR/MEMORY.md"
+        echo "  Data backup: MEMORY.md"
     fi
-
-    # Back up openclaw.json
     if [ -f "$OC_CONFIG" ]; then
-        cp "$OC_CONFIG" "$BACKUP_DIR/openclaw.json"
-        echo "  Backed up: openclaw.json"
+        cp "$OC_CONFIG" "$DATA_BACKUP_DIR/openclaw.json"
     fi
-
-    # Back up skills
     if [ -d "$WORKSPACE/skills" ]; then
-        cp -r "$WORKSPACE/skills" "$BACKUP_DIR/skills" 2>/dev/null
-        echo "  Backed up: skills/"
+        cp -r "$WORKSPACE/skills" "$DATA_BACKUP_DIR/skills" 2>/dev/null
+        echo "  Data backup: skills/"
     fi
-
-    echo "  Backup location: $BACKUP_DIR"
 else
-    echo "  Would back up to: $BACKUP_DIR"
+    echo "  Would create rollback snapshot at: $BACKUP_ROOT/v${PREV_VERSION}-<timestamp>/"
+    echo "  Would create data backup at: $DATA_BACKUP_DIR"
 fi
 
 # ──────────────────────────────────────────────────────────────
@@ -581,6 +677,88 @@ MEMEOF
     # Version marker
     echo "$TOOLKIT_VERSION" > "$WORKSPACE/.toolkit-version"
     echo "  Written toolkit version: $TOOLKIT_VERSION"
+
+    # Install params — saved for safe future updates
+    # If already exists (combined install runs memory first), preserve existing and update model fields
+    PARAMS_FILE="$WORKSPACE/.flipclaw-install.json"
+    if [ -f "$PARAMS_FILE" ]; then
+        python3 - << PYEOF
+import json
+from datetime import datetime, timezone
+
+with open('$PARAMS_FILE') as f:
+    p = json.load(f)
+
+prev_version = p.get('flipclaw_version', 'unknown')
+p['models'] = {
+    'capture_model': '$CAPTURE_MODEL',
+    'capture_provider': '$CAPTURE_PROVIDER',
+    'writer_model': '$WRITER_MODEL',
+    'writer_provider': '$WRITER_PROVIDER',
+    'extraction_model': '$EXTRACTION_MODEL',
+    'generation_model': '$GENERATION_MODEL',
+    'skill_provider': '$SKILL_PROVIDER',
+    'embedding_provider': '$EMBEDDING_PROVIDER',
+    'embedding_model': '$EMBEDDING_MODEL'
+}
+p['openclaw_version'] = '$OPENCLAW_VERSION'
+p['flipclaw_version'] = '$TOOLKIT_VERSION'
+
+if prev_version != '$TOOLKIT_VERSION':
+    history = p.get('update_history', [])
+    history.append({
+        'from': prev_version,
+        'to': '$TOOLKIT_VERSION',
+        'at': datetime.now(timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ'),
+        'openclaw_version': '$OPENCLAW_VERSION',
+        'trigger': 'install-memory',
+    })
+    p['update_history'] = history[-50:]
+
+with open('$PARAMS_FILE', 'w') as f:
+    json.dump(p, f, indent=2)
+PYEOF
+        echo "  Updated model params in .flipclaw-install.json"
+    else
+        python3 - << PYEOF
+import json
+from datetime import datetime, date, timezone
+p = {
+    'flipclaw_version': '$TOOLKIT_VERSION',
+    'openclaw_version': '$OPENCLAW_VERSION',
+    'installed_at': date.today().isoformat(),
+    'workspace': '$WORKSPACE',
+    'agent_name': '$AGENT_NAME',
+    'port': '$PORT',
+    'claude_home': '',
+    'user_id': '',
+    'session_source': 'claude-code',
+    'shared': False,
+    'with_mcp': False,
+    'models': {
+        'capture_model': '$CAPTURE_MODEL',
+        'capture_provider': '$CAPTURE_PROVIDER',
+        'writer_model': '$WRITER_MODEL',
+        'writer_provider': '$WRITER_PROVIDER',
+        'extraction_model': '$EXTRACTION_MODEL',
+        'generation_model': '$GENERATION_MODEL',
+        'skill_provider': '$SKILL_PROVIDER',
+        'embedding_provider': '$EMBEDDING_PROVIDER',
+        'embedding_model': '$EMBEDDING_MODEL'
+    },
+    'update_history': [{
+        'from': 'fresh-install',
+        'to': '$TOOLKIT_VERSION',
+        'at': datetime.now(timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ'),
+        'openclaw_version': '$OPENCLAW_VERSION',
+        'trigger': 'install-memory',
+    }]
+}
+with open('$PARAMS_FILE', 'w') as f:
+    json.dump(p, f, indent=2)
+PYEOF
+        echo "  Created .flipclaw-install.json (install params saved for future updates)"
+    fi
 else
     echo "  Would create initial files (MEMORY.md, structured memory, capture log)"
 fi
