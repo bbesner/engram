@@ -25,8 +25,8 @@
       },
       "extractionModel": {
         "type": "string",
-        "default": "gpt-5.4-nano",
-        "description": "Model for classification gate (cheap)"
+        "default": "gpt-5.4-mini",
+        "description": "Model for classification gate (matches install-memory.sh default)"
       },
       "generationModel": {
         "type": "string",

@@ -91,6 +91,78 @@ Claude Code CLI                    OpenClaw Agent
 2. **Session end** — Full transcript saved, skills evaluated
 3. **Crash sweep** — Catches sessions that ended abnormally
 
+## What FlipClaw Adds to OpenClaw
+
+If you already run OpenClaw, here's what you're actually getting. FlipClaw is a layer of custom features built on top of OpenClaw's memory, cron, and gateway infrastructure — but the new capabilities below are not available in OpenClaw alone.
+
+**Custom features built for FlipClaw** (these didn't exist before FlipClaw — they're enhancements to your OpenClaw agent too, not just your Claude Code CLI):
+
+- **Per-turn memory capture** — extracts durable facts after every agent turn, inspired by mem0. This is the primary memory intake path and runs continuously during conversations.
+- **Auto-skill capture** — automatically generates reusable `SKILL.md` documents from complex sessions. Heuristic gate filters trivial sessions, LLM classification gate evaluates whether the session contains a reusable procedure, then generates the skill with steps, prerequisites, verification, and pitfalls.
+- **Claude Code bridge** — connects Claude Code CLI sessions to OpenClaw's shared memory via `SessionEnd` and `Stop` hooks. Without this, Claude Code has no memory at all.
+- **Claude Code turn capture** — fires per-turn during a Claude Code session, not just at session end, so facts aren't lost if the session crashes mid-conversation.
+- **Crash sweep** — catches sessions that ended abnormally (force-kill, OOM, network drop) and reprocesses them so no work is lost.
+- **Self-service updater** — one-command updates with automatic snapshot backups, dry-run preview, post-update validation, and automatic rollback on failure. Keeps your install current without re-running the installer.
+- **Telegram relay integration** — remote multi-session Claude Code access from your phone (pairs with [claude-telegram-relay](https://github.com/bbesner/claude-telegram-relay)). Not limited to Anthropic's single-session QR-code pairing.
+- **MCP server for remote memory** — exposes OpenClaw memory as MCP tools so Claude Code running on a different machine can search, read, and write into the shared memory over SSH.
+- **Upstream workaround scripts** — `ensure-dreaming-cron.sh` and related helpers that work around known OpenClaw bugs (see [docs/KNOWN-ISSUES.md](docs/KNOWN-ISSUES.md)).
+
+**OpenClaw features FlipClaw configures and surfaces** (these already exist in OpenClaw — FlipClaw sets them up correctly and makes them accessible from Claude Code):
+
+- **memory-core Dreaming** — nightly consolidation with Light / Deep / REM phases, promoting well-recalled facts to long-term memory
+- **Memory Wiki** — browsable backlinked knowledge vault (bridge mode from memory-core)
+- **Semantic memory search** — Gemini hybrid search (70% vector + 30% keyword) via memory-core
+- **Cron jobs, heartbeats, and scheduled automation** — accessible from Claude Code via the shared memory
+- **Multi-agent gateway** — the WebSocket gateway, auth, and hooks system that everything runs on
+
+You get both layers — but the custom layer above is the part that makes Claude Code CLI feel like a completely different tool, and gives OpenClaw users capabilities they didn't have before.
+
+## API Keys & Costs
+
+FlipClaw needs **one required API key**. Everything else is your choice of provider.
+
+### Required
+
+| Key | Used by | Cost | Where to get it |
+|---|---|---|---|
+| **Gemini API key** | memory-core semantic search (embeddings) | **Free tier is sufficient** for typical use | [aistudio.google.com/apikey](https://aistudio.google.com/apikey) |
+
+Without a Gemini key, memory search falls back to keyword-only mode — everything else still works, but recall quality drops significantly. Set both `GEMINI_API_KEY` and `GOOGLE_AI_API_KEY` to the same value because different parts of OpenClaw look for different variable names.
+
+### Required to use Claude Code itself
+
+A **Claude Max subscription** (or an Anthropic API key) for the Claude Code CLI. FlipClaw doesn't add anything here — you need this to run `claude` at all, regardless of FlipClaw. [Sign up at claude.ai](https://claude.ai).
+
+### Your choice — any provider for the LLM-powered features
+
+Per-turn fact extraction, auto-skill classification, and auto-skill generation all make LLM calls. **You pick the provider.** OpenAI, Anthropic, or any OpenClaw-supported provider/OAuth combination. The installer's `--capture-model`, `--capture-provider`, `--extraction-model`, `--generation-model`, and corresponding `--*-provider` flags let you override every model choice.
+
+**Defaults** (chosen for low cost on typical workloads):
+
+| Role | Default Model | Provider | Why this default |
+|---|---|---|---|
+| Fact extraction (every turn) | `gpt-5.4-nano` | OpenAI | Purpose-built for classification/extraction — fastest and cheapest; calls OpenAI directly, bypassing the OpenClaw gateway |
+| Skill classification | `gpt-5.4-mini` | OpenAI | Classification gate needs slightly stronger reasoning than nano |
+| Skill generation | `gpt-5.4-mini` | OpenAI | Generates SKILL.md content; mini is the sweet spot for cost vs. quality |
+| Embeddings | `gemini-embedding-001` | Google | Only model required — free tier is enough |
+
+**Costs with defaults:** fact extraction runs ~once per conversation turn. Auto-skill-capture only triggers on complex sessions (gated by heuristics). For typical personal or small-team use, expect **pennies to single-digit dollars per month** on OpenAI — not a concerning line item.
+
+**Example: use Anthropic instead of OpenAI** (e.g., if you already have an Anthropic OAuth profile in your `openclaw.json` and want to reuse it):
+
+```bash
+bash install.sh \
+  --agent-name "MyAgent" --workspace /path --port 3050 \
+  --gemini-key "AIza..." \
+  --capture-provider anthropic --capture-model claude-haiku-4-5-20251001 \
+  --extraction-model claude-haiku-4-5-20251001 \
+  --generation-model claude-sonnet-4-6
+```
+
+### Already running OpenClaw?
+
+You likely already have at least one provider key (OpenAI, Anthropic, or an OAuth profile) configured in your `openclaw.json` `env.vars` or `auth.profiles` block — FlipClaw reuses those. Adding FlipClaw usually means **just adding `GEMINI_API_KEY` and `GOOGLE_AI_API_KEY`** to the same block. No new secrets to juggle.
+
 ## Install
 
 The recommended way to install FlipClaw is to let an AI handle it. Point Claude Code CLI or your existing OpenClaw agent at the bootstrap file and it will detect your environment, ask a few questions, and set everything up.
@@ -278,30 +350,33 @@ If anything fails, `pm2 logs ${AGENT_NAME,,}-gateway --lines 30` is usually the 
 
 ## What Gets Installed
 
+> **Origin column legend:** **FlipClaw** = custom feature built for FlipClaw, didn't exist before. OpenClaw = stock OpenClaw feature that FlipClaw configures and surfaces. Both layers install together.
+
 ### Memory System (`install-memory.sh`)
 
-| Component | Purpose |
-|-----------|---------|
-| **incremental-memory-capture.py** | Per-turn fact extraction → daily logs (GPT-5.4 Nano) |
-| **memory-bridge extension** | OpenClaw plugin that triggers capture on every agent turn |
-| **auto-skill-capture extension** | Auto-generates reusable skill documents from sessions |
-| **memory-core Dreaming** | Built-in consolidation, dedup, and MEMORY.md promotion |
-| **Memory Wiki** | Bridge-mode organized knowledge vault |
-| **Semantic search** | Gemini hybrid search (70% vector + 30% keyword) |
-| **continuation-skip** | Token savings on continuation sessions |
+| Component | Origin | Purpose |
+|-----------|--------|---------|
+| **incremental-memory-capture.py** | **FlipClaw** | Per-turn fact extraction → daily logs (default: gpt-5.4-nano, direct OpenAI) |
+| **memory-bridge extension** | **FlipClaw** | OpenClaw plugin that triggers per-turn capture on every agent turn |
+| **auto-skill-capture extension** | **FlipClaw** | Auto-generates reusable skill documents from complex sessions |
+| **memory-core Dreaming** | OpenClaw | Built-in consolidation, dedup, and MEMORY.md promotion (Light/Deep/REM phases) |
+| **Memory Wiki** | OpenClaw | Bridge-mode organized knowledge vault |
+| **Semantic search** | OpenClaw | Gemini hybrid search (70% vector + 30% keyword) via memory-core |
+| **continuation-skip** | OpenClaw | Token savings on continuation sessions |
 
 ### Claude Code Integration (`install-claude-code.sh`)
 
-| Component | Purpose |
-|-----------|---------|
-| **claude-code-bridge.py** | Session-end capture — saves transcript, triggers skill extraction |
-| **claude-code-turn-capture.py** | Per-turn capture via Stop hook — extracts facts after every response |
-| **claude-code-sweep.py** | Catches sessions hooks missed (crashes, force-kills) |
-| **claude-code-update-check.sh** | 11-point health check including OpenClaw and FlipClaw version checks |
-| **flipclaw-update.sh** | Self-service updater with snapshot backups and rollback support |
-| **lockutil.py** | Prevents concurrent write corruption |
-| **CLAUDE.md** | Instructions that make Claude Code use the shared memory |
-| **MCP server** (optional) | Remote memory access: search, read, write tools |
+| Component | Origin | Purpose |
+|-----------|--------|---------|
+| **claude-code-bridge.py** | **FlipClaw** | Session-end capture — saves transcript, triggers skill extraction |
+| **claude-code-turn-capture.py** | **FlipClaw** | Per-turn capture via Stop hook — extracts facts after every response |
+| **claude-code-sweep.py** | **FlipClaw** | Catches sessions hooks missed (crashes, force-kills) |
+| **claude-code-update-check.sh** | **FlipClaw** | 12-point health check including OpenClaw and FlipClaw version checks |
+| **flipclaw-update.sh** | **FlipClaw** | Self-service updater with snapshot backups and rollback support |
+| **lockutil.py** | **FlipClaw** | Prevents concurrent write corruption |
+| **CLAUDE.md** | **FlipClaw** | Instructions that make Claude Code use the shared memory |
+| **MCP server** (optional) | **FlipClaw** (wraps OpenClaw memory) | Remote memory access: search, read, write tools |
+| **SessionEnd / Stop hooks** | OpenClaw | Hook infrastructure FlipClaw's bridge scripts attach to |
 
 ## Three Installers
 

@@ -68,6 +68,51 @@ Get a free key at [aistudio.google.com/apikey](https://aistudio.google.com/apike
 
 ---
 
+### LLM provider key not set (fact extraction / auto-skill capture silently skipped)
+
+**Cause:** FlipClaw's per-turn fact extraction (`incremental-memory-capture.py`) and the auto-skill-capture extension both call an LLM on every eligible session. By default they use OpenAI (`gpt-5.4-nano` for extraction, `gpt-5.4-mini` for skill capture), which requires `OPENAI_API_KEY` in your `openclaw.json` `env.vars`. If the key is missing, these pipelines silently skip — the gateway keeps running, but daily logs and `skills/auto-captured/` stop growing.
+
+**Symptom check:**
+```bash
+# Are facts being extracted? Look for today's daily log
+ls -l $WORKSPACE/memory/$(date -u +%Y-%m-%d).md 2>&1
+
+# Are skills being auto-captured?
+ls $WORKSPACE/skills/auto-captured/ 2>&1 | head
+
+# Is the key set?
+python3 -c "import json; print(json.load(open('$WORKSPACE/openclaw.json'))['env']['vars'].get('OPENAI_API_KEY','MISSING')[:10])"
+```
+
+**Fix 1 — Add the OpenAI key to `openclaw.json`:**
+```json
+{
+  "env": {
+    "vars": {
+      "OPENAI_API_KEY": "sk-proj-..."
+    }
+  }
+}
+```
+
+Get a key at [platform.openai.com/api-keys](https://platform.openai.com/api-keys). Typical cost is pennies to single-digit dollars per month for personal/small-team workloads.
+
+**Fix 2 — Switch to a different provider you already have configured.** FlipClaw is provider-agnostic for these calls. If you already have an Anthropic key or OAuth profile in OpenClaw, re-run the installer (or `flipclaw-update.sh`) with provider flags to point at it:
+
+```bash
+bash install.sh \
+  --agent-name "MyAgent" --workspace $WORKSPACE --port 3050 \
+  --gemini-key "AIza..." \
+  --capture-provider anthropic --capture-model claude-haiku-4-5-20251001 \
+  --extraction-model claude-haiku-4-5-20251001 \
+  --generation-model claude-sonnet-4-6 \
+  --skip-openclaw
+```
+
+The only key that cannot be swapped is the Gemini embedding key — memory-core's semantic search requires Gemini embeddings specifically.
+
+---
+
 ### Pre-flight warning: "Legacy auth.profiles.*.primary key detected"
 
 **Cause:** Your `openclaw.json` has an `auth.profiles.ANY.primary` field left over from an older OpenClaw version. OpenClaw 2026.4.9+ rejects this key as "Unrecognized".
