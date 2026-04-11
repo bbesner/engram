@@ -30,25 +30,29 @@ echo ""
 echo -e "${BLUE}Phase 1: Installing memory system...${NC}"
 echo ""
 
-# Filter out Claude Code-specific flags for the memory installer
+# Split args: some flags are memory-installer-only, some are Claude-Code-only.
+# Passing an unrecognized flag to either sub-installer makes it hard-exit, so
+# we build MEMORY_ARGS and CLAUDE_ARGS explicitly here.
 MEMORY_ARGS=()
-CLAUDE_ARGS=("$@")
-SKIP_NEXT=false
+CLAUDE_ARGS=()
 
-for arg in "$@"; do
-    if [ "$SKIP_NEXT" = true ]; then
-        SKIP_NEXT=false
-        continue
-    fi
-    case "$arg" in
+while [ $# -gt 0 ]; do
+    case "$1" in
+        # Claude-Code-only flags — strip from MEMORY_ARGS
         --user|--claude-home)
-            SKIP_NEXT=true  # Skip this and next arg
-            ;;
+            CLAUDE_ARGS+=("$1" "$2"); shift 2 ;;
         --shared|--with-mcp)
-            ;;  # Skip Claude Code-only flags
+            CLAUDE_ARGS+=("$1"); shift ;;
+        # Memory-installer-only flags — strip from CLAUDE_ARGS
+        --capture-model|--capture-provider|--writer-model|--writer-provider|\
+        --extraction-model|--generation-model|--embedding-provider|--embedding-model|\
+        --gemini-key)
+            MEMORY_ARGS+=("$1" "$2"); shift 2 ;;
+        # Shared flags — pass to both
         *)
-            MEMORY_ARGS+=("$arg")
-            ;;
+            MEMORY_ARGS+=("$1")
+            CLAUDE_ARGS+=("$1")
+            shift ;;
     esac
 done
 

@@ -14,6 +14,17 @@
 
 ---
 
+> ### ⚡ Install in one command
+> Let Claude Code (or your existing OpenClaw agent) do the entire setup for you. The AI bootstrap detects your environment, asks a few questions, and handles the rest.
+>
+> ```
+> claude "Install FlipClaw. Read and follow the instructions at: https://raw.githubusercontent.com/bbesner/flipclaw/main/BOOTSTRAP.md"
+> ```
+>
+> Don't have Claude Code yet? Jump to [Install](#install) for the 3-step bootstrap, or see [Manual install](#manual-install-advanced) if you'd rather do it yourself.
+
+---
+
 ## The Problem
 
 If you're running Claude through a third-party harness like OpenClaw, Anthropic's recent OAuth changes mean those conversations now cost API rates or extra usage billing. Your flat-rate Max subscription no longer covers it.
@@ -80,87 +91,190 @@ Claude Code CLI                    OpenClaw Agent
 2. **Session end** — Full transcript saved, skills evaluated
 3. **Crash sweep** — Catches sessions that ended abnormally
 
-## Quick Start
+## Install
 
-### Prerequisites
+The recommended way to install FlipClaw is to let an AI handle it. Point Claude Code CLI or your existing OpenClaw agent at the bootstrap file and it will detect your environment, ask a few questions, and set everything up.
 
-- **OpenClaw 2026.4.9 or later** — required for memory-core Dreaming, memory-wiki, and continuation-skip. Install with `npm install -g openclaw`. The installer verifies this before making any changes.
-- [Claude Code CLI](https://docs.anthropic.com/en/docs/claude-code) installed (uses your Claude Max subscription, no API charges)
-- **Python 3.10+** and **Node.js 18+**
+---
 
-### API keys
+### Which path are you starting from?
 
-Two API keys are needed. Both go into your agent's `openclaw.json` under `env.vars`. Neither is billed through Anthropic — Claude Code itself still uses your Max subscription.
+#### I have neither Claude Code nor OpenClaw
 
-| Key | Purpose | Cost | Where to get it |
-|-----|---------|------|-----------------|
-| **OpenAI API key** | Fact extraction (GPT-5.4 Nano) and auto-skill capture (GPT-5.4 Mini) | Pennies per day for typical use | [platform.openai.com/api-keys](https://platform.openai.com/api-keys) |
-| **Gemini API key** | Hybrid semantic search — vector embeddings via `gemini-embedding-001`. Required for memory-core's full search quality; falls back to keyword-only without it. | **Free tier is sufficient** for most workloads | [aistudio.google.com/apikey](https://aistudio.google.com/apikey) |
-
-**Add them to your `openclaw.json`:**
-
-```json
-{
-  "env": {
-    "vars": {
-      "OPENAI_API_KEY": "sk-proj-...",
-      "GEMINI_API_KEY": "AIza...",
-      "GOOGLE_AI_API_KEY": "AIza..."
-    }
-  }
-}
-```
-
-Or pass the Gemini key directly to the installer: `bash install.sh ... --gemini-key "AIza..."`
-
-> **Why both `GEMINI_API_KEY` and `GOOGLE_AI_API_KEY`?** Different parts of OpenClaw look for different variable names. Set both to the same value to avoid "provider: none" errors.
-
-### First-install checklist
-
-Before running the installer, make sure you have:
-
-- [ ] `openclaw --version` prints `2026.4.9` or newer
-- [ ] `claude --version` works (Claude Code CLI installed)
-- [ ] `python3 --version` ≥ 3.10
-- [ ] `node --version` ≥ 18
-- [ ] Your agent workspace directory exists and contains an `openclaw.json`
-- [ ] Your OpenClaw gateway is running (PM2 or direct) — **optional but recommended**, the installer can still run without it
-- [ ] OpenAI API key added to `openclaw.json` env.vars
-- [ ] Gemini API key added to `openclaw.json` env.vars (or ready to pass via `--gemini-key`)
-
-### Install
+**Step 1 — Install Claude Code CLI** (one-time, takes ~2 minutes)
 
 ```bash
-git clone https://github.com/bbesner/flipclaw.git
-cd flipclaw
-
-# Full install (memory system + Claude Code hooks)
-bash install.sh \
-  --agent-name "MyAgent" \
-  --workspace /home/user/agent \
-  --port 3050
-
-# Restart your OpenClaw gateway
-pm2 restart my-agent-gateway
+npm install -g @anthropic-ai/claude-code
 ```
 
-### Verify
+> **Node.js 18+ required.** Check with `node --version`. Install from [nodejs.org](https://nodejs.org) if needed.
+>
+> **macOS permissions error?** Try: `sudo npm install -g --unsafe-perm @anthropic-ai/claude-code`
+
+**Step 2 — Log in**
 
 ```bash
-bash /home/user/agent/scripts/claude-code-update-check.sh
+claude login
 ```
 
-Then start a Claude Code session, do some work, end it, and check:
+This opens a browser for Anthropic authentication. You need either a **Claude Max subscription** (recommended — flat rate, no per-message charges) or an **Anthropic API key** (pay per token). Sign up at [claude.ai](https://claude.ai) if you don't have an account.
+
+**Step 3 — Run the bootstrap installer**
+
+```
+claude "Install FlipClaw. Read and follow the instructions at: https://raw.githubusercontent.com/bbesner/flipclaw/main/BOOTSTRAP.md"
+```
+
+Claude Code will detect your environment, ask a few setup questions, and handle the rest.
+
+---
+
+#### I have Claude Code but not OpenClaw
+
+```
+claude "Install FlipClaw. Read and follow the instructions at: https://raw.githubusercontent.com/bbesner/flipclaw/main/BOOTSTRAP.md"
+```
+
+Claude Code will install and configure OpenClaw, then install FlipClaw on top.
+
+---
+
+#### I have OpenClaw but not Claude Code
+
+Tell your existing OpenClaw agent:
+
+> *"Install FlipClaw on this system. Read and follow the instructions at: https://raw.githubusercontent.com/bbesner/flipclaw/main/BOOTSTRAP.md"*
+
+Your agent will install Claude Code, walk you through the one manual login step, then complete the FlipClaw setup. This is the path if you found FlipClaw specifically because you want to move your Claude conversations off API billing onto a Claude Max subscription.
+
+---
+
+#### I already have both Claude Code and OpenClaw
+
+```
+claude "Install FlipClaw. Read and follow the instructions at: https://raw.githubusercontent.com/bbesner/flipclaw/main/BOOTSTRAP.md"
+```
+
+Claude Code will detect your existing setup, ask whether to keep or replace your current agent config, and install FlipClaw non-destructively on top.
+
+---
+
+### What the bootstrap will ask you
+
+The AI installer handles environment detection automatically and only asks what it can't figure out on its own:
+
+1. **Topology** — same machine (cohabitating) or split across two machines (MCP bridge)?
+2. **OpenClaw situation** — keep existing agent, create a fresh one alongside it, or start clean?
+3. **Agent name and port** — with sensible defaults suggested
+4. **OpenAI API key** — for fact extraction (pennies/day). Get one at [platform.openai.com/api-keys](https://platform.openai.com/api-keys)
+5. **Gemini API key** — for semantic memory search (free tier is enough). Get one at [aistudio.google.com/apikey](https://aistudio.google.com/apikey)
+
+Keys are validated before installation proceeds — no silent failures from a typo.
+
+---
+
+### Cohabitating vs. split setup
+
+| | Cohabitating | Split (MCP) |
+|---|---|---|
+| Claude Code and OpenClaw on | Same machine | Different machines |
+| Memory access | Instant (filesystem) | Fast (network/SSH) |
+| Setup complexity | Simple | Moderate |
+| Works offline | Yes | No |
+| Best for | VPS, local desktop/server | Local Claude Code + remote OpenClaw |
+
+**Not sure?** Cohabitating is the default recommendation. Choose split only if you specifically want Claude Code Desktop or VS Code on your local machine while running OpenClaw on a remote server.
+
+---
+
+### Manual install (advanced)
+
+If you prefer to run the install yourself, follow the steps below. This produces the same end state as the AI bootstrap — the bootstrap is still recommended because it handles environment detection, branching for existing vs fresh installs, and error recovery, but these instructions are deterministic if you want full control.
+
+**Prerequisites:**
+- Node.js 18+, npm, Python 3.10+
+- `jq`, `curl`, `openssl`, `git`
+- PM2 (`npm install -g pm2`)
+- OpenClaw 2026.4.10 or later (`npm install -g openclaw` — verify with `openclaw --version`)
+- Claude Code CLI installed and authenticated: `npm install -g @anthropic-ai/claude-code && claude login`
+- OpenAI API key — [platform.openai.com/api-keys](https://platform.openai.com/api-keys)
+- Gemini API key (free tier works) — [aistudio.google.com/apikey](https://aistudio.google.com/apikey)
+
+**Step 1 — Pick a workspace, port, and agent name**
+
 ```bash
-# See captured session
-ls /home/user/agent/agents/claude-code/sessions/
-
-# See extracted facts in today's log
-cat /home/user/agent/memory/$(date +%Y-%m-%d).md
-
-# Search memory
-cd /home/user/agent && openclaw memory search "what I worked on today"
+export WORKSPACE=$HOME/myagent
+export PORT=3050
+export AGENT_NAME=MyAgent
+mkdir -p "$WORKSPACE"
 ```
+
+**Step 2 — Scaffold a valid `openclaw.json`**
+
+OpenClaw 2026.4.10 rejects hand-written minimal stubs (no root-level `name`/`port` keys). Use `openclaw onboard` to generate a schema-valid config:
+
+```bash
+OPENCLAW_CONFIG_PATH="$WORKSPACE/openclaw.json" openclaw onboard \
+  --non-interactive --accept-risk \
+  --flow manual --mode local \
+  --gateway-port $PORT --gateway-bind loopback \
+  --gateway-auth token --gateway-token "$(openssl rand -hex 16)" \
+  --auth-choice skip \
+  --workspace "$WORKSPACE" \
+  --skip-health
+```
+
+**Step 3 — Inject your API keys into `env.vars`**
+
+`onboard` does not write API keys, but the memory plugin needs them:
+
+```bash
+jq '.env = {"vars": {
+  "OPENAI_API_KEY": "sk-...",
+  "GEMINI_API_KEY": "AIza...",
+  "GOOGLE_AI_API_KEY": "AIza..."
+}}' "$WORKSPACE/openclaw.json" > /tmp/cfg && mv /tmp/cfg "$WORKSPACE/openclaw.json"
+```
+
+**Step 4 — Run the FlipClaw installer**
+
+```bash
+git clone https://github.com/bbesner/flipclaw.git /tmp/flipclaw-install
+bash /tmp/flipclaw-install/install.sh \
+  --agent-name "$AGENT_NAME" \
+  --workspace "$WORKSPACE" \
+  --port $PORT \
+  --gemini-key "AIza..."
+```
+
+**Step 5 — Start the gateway under PM2**
+
+Two things to get right:
+
+- Use `gateway run` (foreground), **not** `gateway start` — the latter is the systemd/launchd service wrapper and exits immediately under PM2.
+- Pass the command to PM2 as a **quoted string**, not via `--`. `pm2 start openclaw -- gateway run` silently drops the post-`--` args.
+
+```bash
+cd "$WORKSPACE"
+OPENCLAW_CONFIG_PATH="$WORKSPACE/openclaw.json" \
+  pm2 start --name "${AGENT_NAME,,}-gateway" "openclaw gateway run"
+pm2 save
+pm2 startup   # follow the output instruction if shown
+```
+
+**Step 6 — Verify**
+
+```bash
+sleep 5 && curl -sS http://localhost:$PORT/health
+# expected: {"ok":true,"status":"live"}
+
+bash "$WORKSPACE/scripts/claude-code-update-check.sh"
+# expected: 12 passed / 0 failed
+
+rm -rf /tmp/flipclaw-install
+```
+
+If anything fails, `pm2 logs ${AGENT_NAME,,}-gateway --lines 30` is usually the fastest way to diagnose. See [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md) for symptom → fix mappings.
 
 ## What Gets Installed
 
