@@ -426,6 +426,40 @@ def write_session_cache(session_id, messages, facts):
     cache_path.write_text("\n".join(lines) + "\n")
 
 
+def get_session_date(session_path: Path) -> str:
+    """Return the session's end date as a UTC YYYY-MM-DD string.
+
+    Reads the last message entry's timestamp from the JSONL so that facts are
+    attributed to the calendar day the work actually happened on, not the day
+    the capture script ran (important for sessions processed hours or days
+    after they ended, or for sweep runs picking up crashed sessions).
+
+    UTC bucketing is intentional: this script ships in the public FlipClaw
+    toolkit, so the date bucket must be timezone-neutral. Falls back to
+    current UTC if no session timestamp is found.
+    """
+    last_ts = None
+    try:
+        with open(session_path, errors="ignore") as f:
+            for line in f:
+                try:
+                    entry = json.loads(line)
+                except Exception:
+                    continue
+                ts = entry.get("timestamp")
+                if ts:
+                    last_ts = ts
+    except Exception:
+        pass
+    if last_ts:
+        try:
+            dt = datetime.fromisoformat(last_ts.replace("Z", "+00:00"))
+            return dt.astimezone(timezone.utc).strftime("%Y-%m-%d")
+        except Exception:
+            pass
+    return datetime.now(timezone.utc).strftime("%Y-%m-%d")
+
+
 def process_session(session_path, api_key=None, dry_run=False):
     session_id, messages = extract_recent_window(session_path)
     if len(messages) < 4:
@@ -465,7 +499,7 @@ def process_session(session_path, api_key=None, dry_run=False):
     source_suffix = f" ({source})" if source != "openclaw" else ""
     src_tag = f" [src:{source}]" if source != "openclaw" else ""
 
-    today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    today = get_session_date(session_path)
     daily_path = MEMORY_DIR / f"{today}.md"
     append_to_file(daily_path, f"Incremental Memory Capture — Session {session_id[:8]}{source_suffix}", [f"[{f['category']}]{src_tag} {f['text']}" for f in facts])
 
