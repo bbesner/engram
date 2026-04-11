@@ -595,6 +595,21 @@ apply_script "$TOOLKIT_DIR/scripts/claude-code-turn-capture.py" "$WORKSPACE/scri
 apply_script "$TOOLKIT_DIR/scripts/claude-code-update-check.sh" "$WORKSPACE/scripts/claude-code-update-check.sh" "claude-code-update-check.sh"
 apply_script "$TOOLKIT_DIR/scripts/flipclaw-update.sh"          "$WORKSPACE/scripts/flipclaw-update.sh"          "flipclaw-update.sh (self)"
 apply_script "$TOOLKIT_DIR/scripts/lockutil.py"                 "$WORKSPACE/scripts/lockutil.py"                 "lockutil.py"
+apply_script "$TOOLKIT_DIR/scripts/apply-upstream-patches.sh"   "$WORKSPACE/scripts/apply-upstream-patches.sh"   "apply-upstream-patches.sh"
+
+# Patch registry (plain JSON — no template substitution, so bypass apply_script)
+if [ -f "$TOOLKIT_DIR/scripts/upstream-patches.json" ]; then
+    if [ "$DRY_RUN" = true ]; then
+        if diff -q "$TOOLKIT_DIR/scripts/upstream-patches.json" "$WORKSPACE/scripts/upstream-patches.json" >/dev/null 2>&1; then
+            echo "  UNCHANGED: upstream-patches.json"
+        else
+            echo "  WOULD UPDATE: upstream-patches.json"
+        fi
+    else
+        cp "$TOOLKIT_DIR/scripts/upstream-patches.json" "$WORKSPACE/scripts/upstream-patches.json"
+        echo "  Updated: upstream-patches.json"
+    fi
+fi
 
 # Memory pipeline scripts
 apply_model_script "$TOOLKIT_DIR/scripts/incremental-memory-capture.py" \
@@ -852,6 +867,34 @@ fi
 # ──────────────────────────────────────────────────────────────
 # Done
 # ──────────────────────────────────────────────────────────────
+
+# ──────────────────────────────────────────────────────────────
+# Step 8: Reconcile upstream patch registry
+# ──────────────────────────────────────────────────────────────
+#
+# Re-evaluate scripts/upstream-patches.json against the user's current
+# OpenClaw version. An OpenClaw upgrade between installs may have landed
+# fixes for bugs FlipClaw was working around, in which case this step
+# cleanly removes the now-obsolete workaround scripts and cron jobs.
+
+if [ "$DRY_RUN" = false ] && [ -x "$WORKSPACE/scripts/apply-upstream-patches.sh" ]; then
+    echo ""
+    echo -e "${BLUE}Step 8: Upstream patch reconciliation${NC}"
+    PORT_FOR_PATCHES=$(python3 -c "
+import json
+try:
+    with open('$WORKSPACE/openclaw.json') as f:
+        d = json.load(f)
+    print(d.get('gateway', {}).get('port') or d.get('port') or '3050')
+except Exception:
+    print('3050')
+" 2>/dev/null)
+    bash "$WORKSPACE/scripts/apply-upstream-patches.sh" \
+        --workspace "$WORKSPACE" \
+        --port "$PORT_FOR_PATCHES" || {
+        echo -e "${YELLOW}[WARN]${NC} patch reconciliation reported failures — update itself was successful"
+    }
+fi
 
 echo "========================================"
 if [ "$DRY_RUN" = true ]; then

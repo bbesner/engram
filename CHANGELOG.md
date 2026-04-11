@@ -7,6 +7,42 @@ Versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
 
+## [3.2.2] — 2026-04-11
+
+Minor release introducing the **upstream patch registry** — a declarative, version-aware framework for managing workarounds against known OpenClaw bugs. Both dreaming cron reconciler and wiki bridge zero-artifacts bugs documented in KNOWN-ISSUES.md were verified fixed in OpenClaw **2026.4.10**, and the registry now cleans up those workarounds automatically on upgrade. Also contains the BOOTSTRAP.md AI-installer, install-flow fixes for OpenClaw 2026.4.10's stricter config schema, and documentation overhaul differentiating FlipClaw custom features from OpenClaw stock features.
+
+### Added
+
+- **`scripts/upstream-patches.json`** — Declarative registry of FlipClaw workarounds for upstream OpenClaw bugs. Each entry records `broken_from`/`fixed_in` version ranges, workaround artifacts (scripts, cron jobs), and an optional runtime probe for regression safety. Single source of truth for version-conditional patch management.
+- **`scripts/apply-upstream-patches.sh`** — Version-aware runner that reads the registry, compares against the installed OpenClaw version, and installs or removes workaround artifacts accordingly. Called automatically by `install-memory.sh` and `flipclaw-update.sh` so OpenClaw upgrades trigger workaround cleanup with no user action.
+- **`BOOTSTRAP.md`** — Executor-agnostic AI installer that detects the environment and handles installation via Claude Code CLI or any OpenClaw agent. Covers four install paths: fresh, existing-Claude-Code, existing-OpenClaw, and split-machine (MCP bridge).
+- **`README.md` "What FlipClaw Adds to OpenClaw" section** — Explicitly differentiates FlipClaw custom features (per-turn memory capture, auto-skill capture, Claude Code bridge, crash sweep, updater, Telegram relay integration, MCP server for remote memory, patch registry) from OpenClaw stock features FlipClaw configures (memory-core Dreaming, Memory Wiki, semantic search, cron system, gateway).
+- **`README.md` "API Keys & Costs" section** — Correctly frames Gemini as the only hard requirement (memory-core embeddings) and every other LLM provider as user choice. Includes provider-swap example using Anthropic OAuth instead of OpenAI.
+- **`README.md` "Install in one command" top-level callout** — AI-bootstrap install command visible above the fold.
+- **`Origin` column on "What Gets Installed" tables** — Each component tagged as FlipClaw-custom or OpenClaw-stock.
+- **`docs/TROUBLESHOOTING.md` OpenAI-key section** — Mirrors the existing Gemini section with provider-swap guidance.
+
+### Fixed
+
+- **`install.sh` arg splitter** — Memory-only flags (`--gemini-key`, `--capture-model`, etc.) no longer leak into `install-claude-code.sh`, which previously hard-exited on unknown flags. Phase 2 (Claude Code integration) now runs cleanly after Phase 1 (memory system) when using combined flags.
+- **`scripts/incremental-memory-capture.py`** — Daily log bucketing now reads the session's last message timestamp instead of using the processing time, so facts from sessions processed hours or days after they ended (crash sweep, delayed processing) are attributed to the correct calendar day. Bucketing remains UTC for timezone-neutral behavior in the public toolkit.
+- **`extensions/auto-skill-capture/openclaw.plugin.json`** — `extractionModel` plugin schema default corrected from `gpt-5.4-nano` to `gpt-5.4-mini` to match what `install-memory.sh` actually writes during install (documentation consistency fix; no runtime behavior change).
+
+### Changed
+
+- **`install-memory.sh`** — Replaced the inline dreaming-cron-workaround install block (~50 lines) with a single call to `apply-upstream-patches.sh`. Patch registry now owns all version-conditional workaround logic.
+- **`scripts/flipclaw-update.sh`** — Added post-update Step 8 that re-runs the patch registry against the user's current OpenClaw version. Upgrading OpenClaw between FlipClaw updates now automatically removes obsolete workarounds.
+- **`docs/KNOWN-ISSUES.md`** — Both Issue 1 (dreaming cron) and Issue 2 (wiki bridge) marked as **Fixed in 2026.4.10**, with registry IDs linking back to `upstream-patches.json` for the reconciliation policy.
+- **`README.md` symptom table** — Dreaming and wiki-bridge rows updated to note the upstream fix and direct users to upgrade rather than stay on the workaround.
+
+### Verification
+
+- **Dreaming cron reconciler fix** — Verified by source inspection comparing `dreaming-*.js` between 2026.4.9 and 2026.4.10 (new `startupCfg` path reads config from the startup event payload instead of the empty `api.config` at hook time).
+- **Wiki bridge fix** — Verified by runtime test in a clean Ubuntu 24.04 + OpenClaw 2026.4.10 LXD container with 5 memory artifacts on disk. `openclaw wiki status` reported `Bridge: enabled (5 exported artifacts)` and `openclaw wiki bridge import` reported `Bridge import synced 5 artifacts across 1 workspaces`. (Source inspection alone was a false negative — the fix lives outside the `listArtifacts` call chain; runtime verification caught it.)
+- **`install.sh` arg filter + full install flow** — Verified end-to-end in the same container: `openclaw onboard` → `jq` env injection → `install.sh --gemini-key KEY` → `pm2 start --name fctest-gateway "openclaw gateway run"` → `/health` returned `{"ok":true,"status":"live"}` → `claude-code-update-check.sh` reported 12 passed / 1 warning / 0 failed.
+
+---
+
 ## [3.2.1] — 2026-04-10
 
 Production-hardened patch release based on learnings from the first real-world install on a second agent, plus a second round of issues discovered during live gateway startup testing. The v3.2.0 installer worked on fresh synthetic test workspaces but hit 10 distinct issues when run against a long-lived OpenClaw agent with a pre-existing config, extensions, and a state-dir config alongside the workspace config. An 11th issue (multi-user mode not wired up) was found during test planning and deferred to v3.3.0 as experimental. A 12th issue (plugins.load.paths only set in state-dir, not workspace) was found during Phase 3 live gateway testing and fixed immediately. v3.2.1 bundles fixes for bugs 1–10 and 12, documents bug 11 as experimental, and adds significantly expanded documentation so users don't have to rediscover these issues.

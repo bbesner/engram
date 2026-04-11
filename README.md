@@ -105,7 +105,7 @@ If you already run OpenClaw, here's what you're actually getting. FlipClaw is a 
 - **Self-service updater** — one-command updates with automatic snapshot backups, dry-run preview, post-update validation, and automatic rollback on failure. Keeps your install current without re-running the installer.
 - **Telegram relay integration** — remote multi-session Claude Code access from your phone (pairs with [claude-telegram-relay](https://github.com/bbesner/claude-telegram-relay)). Not limited to Anthropic's single-session QR-code pairing.
 - **MCP server for remote memory** — exposes OpenClaw memory as MCP tools so Claude Code running on a different machine can search, read, and write into the shared memory over SSH.
-- **Upstream workaround scripts** — `ensure-dreaming-cron.sh` and related helpers that work around known OpenClaw bugs (see [docs/KNOWN-ISSUES.md](docs/KNOWN-ISSUES.md)).
+- **Version-aware upstream patch registry** — declarative registry (`scripts/upstream-patches.json`) and runner (`scripts/apply-upstream-patches.sh`) that track known OpenClaw bugs, install workaround scripts/cron jobs on affected versions, and automatically remove them when you upgrade OpenClaw to a version that ships the upstream fix (see [docs/KNOWN-ISSUES.md](docs/KNOWN-ISSUES.md)).
 
 **OpenClaw features FlipClaw configures and surfaces** (these already exist in OpenClaw — FlipClaw sets them up correctly and makes them accessible from Claude Code):
 
@@ -593,9 +593,9 @@ Common symptoms and quick fixes:
 |---------|-------------------|-----|
 | `openclaw memory status` shows `Provider: none` | Gemini API key missing | Add `GEMINI_API_KEY` to `openclaw.json` env.vars |
 | `memory-core: plugin disabled` in gateway logs | Memory slot not set or plugin allow list excludes it | Re-run v3.2.1+ installer — pre-flight auto-fixes this |
-| Dreaming never runs nightly | OpenClaw 2026.4.x reconciler bug | v3.2.1+ ships `ensure-dreaming-cron.sh` workaround automatically |
+| Dreaming never runs nightly (OpenClaw ≤ 2026.4.9) | Upstream reconciler bug | Fixed upstream in 2026.4.10. On 2026.4.x ≤ 4.9, v3.2.2+ auto-installs the `ensure-dreaming-cron.sh` workaround via the patch registry; on 4.10+ it removes it |
 | `Invalid config: Unrecognized key "primary"` | Legacy auth config field | v3.2.1+ installer auto-sanitizes |
-| `Bridge import synced 0 artifacts` in wiki | Upstream OpenClaw bug | Use `openclaw wiki ingest <file>` for manual imports |
+| `Bridge import synced 0 artifacts` in wiki (OpenClaw ≤ 2026.4.9) | Upstream wiki bridge bug | Fixed upstream in 2026.4.10. Upgrade with `npm install -g openclaw@latest` and run `flipclaw-update.sh` |
 | `Duplicate plugin id detected` warnings | Old `openclaw-mem0` extension directory | v3.2.1+ installer auto-moves conflicting directories aside |
 
 ## Roadmap

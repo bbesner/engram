@@ -4,11 +4,15 @@ This document catalogs bugs in OpenClaw (not FlipClaw) that we've identified dur
 
 **If you hit one of these symptoms, it's an OpenClaw bug — not a FlipClaw bug.** FlipClaw ships workarounds for the ones we can work around client-side.
 
+**Version-aware workaround management (v3.2.2+):** FlipClaw now ships a declarative **patch registry** at `scripts/upstream-patches.json` and a runner at `scripts/apply-upstream-patches.sh`. The runner reads the registry, compares each workaround's version range against your installed OpenClaw version, and installs or removes the workaround accordingly. `install-memory.sh` and `flipclaw-update.sh` both call the runner automatically, so upgrading OpenClaw to a version that fixes a bug will automatically remove the corresponding workaround scripts and cron jobs on your next `flipclaw-update.sh` run. Each fixed upstream issue below has a `Fixed in:` line documenting the reconciliation.
+
 ---
 
 ## Issue 1: Managed dreaming cron removed by reconciler on gateway restart
 
-**Affected versions:** OpenClaw 2026.4.x (confirmed in 2026.4.9)
+**Affected versions:** OpenClaw 2026.4.0 – 2026.4.9
+**Fixed in:** OpenClaw **2026.4.10** (verified by source inspection + runtime test)
+**Registry id:** `dreaming-cron-reconciler`
 
 **Symptom:**
 - `dreaming.enabled: true` is set correctly in `openclaw.json` under `plugins.entries.memory-core.config.dreaming`
@@ -52,7 +56,9 @@ openclaw cron list | grep -i dreaming   # should show the Memory Dreaming Promot
 
 ## Issue 2: Wiki bridge import returns 0 artifacts
 
-**Affected versions:** OpenClaw 2026.4.9 (likely earlier 2026.4.x too)
+**Affected versions:** OpenClaw 2026.4.0 – 2026.4.9
+**Fixed in:** OpenClaw **2026.4.10** (verified by runtime test — source inspection was a false negative, see `scripts/upstream-patches.json` verification notes)
+**Registry id:** `wiki-bridge-zero-artifacts`
 
 **Symptom:**
 - `openclaw wiki status` shows `Bridge: enabled (0 exported artifacts)` and `Pages: 0 sources, 0 entities, 0 concepts, 0 syntheses`

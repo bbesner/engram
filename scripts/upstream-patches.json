@@ -1,0 +1,61 @@
+{
+  "$schema_version": 1,
+  "$description": "Declarative registry of FlipClaw workarounds for known upstream OpenClaw bugs. Each entry records: the affected version range, the fix version (or null if still broken), the artifacts FlipClaw installs as a workaround, an optional runtime probe to verify the upstream fix is actually present, and documentation metadata. apply-upstream-patches.sh reads this file on every install and update, compares against the installed OpenClaw version, and installs or removes workarounds accordingly.",
+  "patches": {
+    "dreaming-cron-reconciler": {
+      "title": "memory-core reconciler removes managed dreaming cron on gateway restart",
+      "broken_from": "2026.4.0",
+      "fixed_in": "2026.4.10",
+      "verified_by": ["source-inspection-4.9-vs-4.10", "runtime-test-4.10"],
+      "verification_notes": "In 4.9, reconcileShortTermDreamingCronJob reads config from api.config at gateway:startup hook time, which is empty, so the reconciler interprets dreaming as disabled and wipes the managed cron. In 4.10, a new startupCfg path reads the config from the startup event payload first, falling back to api.config only if that fails.",
+      "artifacts": {
+        "scripts": [
+          {
+            "path": "scripts/ensure-dreaming-cron.sh",
+            "template_source": "scripts/ensure-dreaming-cron.sh",
+            "template_vars": ["WORKSPACE", "PORT"],
+            "executable": true
+          }
+        ],
+        "cron_jobs": [
+          {
+            "name": "Restore Dreaming Cron After Restart",
+            "description": "Workaround for OpenClaw 2026.4.x bug where memory-core reconciler removes managed dreaming cron on gateway startup. Runs scripts/ensure-dreaming-cron.sh shortly after the nightly restart to recreate the managed cron if missing.",
+            "cron": "0 22 * * *",
+            "tz": "America/New_York",
+            "session": "main",
+            "wake": "next-heartbeat",
+            "system_event_template": "Memory dreaming cron health check after nightly restart. Run: exec {{WORKSPACE}}/scripts/ensure-dreaming-cron.sh"
+          }
+        ]
+      },
+      "runtime_probe": {
+        "description": "Verify a managed Memory Dreaming Promotion cron exists after gateway start",
+        "command": "openclaw cron list 2>/dev/null | grep -q 'Memory Dreaming Promotion'",
+        "expected_exit": 0,
+        "fallback_on_probe_failure": "apply_workaround_anyway"
+      },
+      "upstream_issue": null,
+      "docs_ref": "docs/KNOWN-ISSUES.md#issue-1-managed-dreaming-cron-removed-by-reconciler-on-gateway-restart"
+    },
+    "wiki-bridge-zero-artifacts": {
+      "title": "wiki bridge listArtifacts returns empty even with indexed memory content",
+      "broken_from": "2026.4.0",
+      "fixed_in": "2026.4.10",
+      "verified_by": ["runtime-test-4.10"],
+      "verification_notes": "Source inspection showed the listArtifacts call chain is byte-identical between 4.9 and 4.10. Runtime test on a clean 4.10 container with 5 memory artifacts on disk confirmed the bridge discovers and imports all of them: 'Bridge: enabled (5 exported artifacts)'. The fix likely lives in config/agent-list resolution outside the direct listArtifacts path. Source inspection was a false negative — runtime verification caught the real behavior.",
+      "artifacts": {
+        "scripts": [],
+        "cron_jobs": []
+      },
+      "runtime_probe": {
+        "description": "Verify wiki bridge reports >0 exported artifacts with at least one memory file on disk",
+        "command": "openclaw wiki status 2>/dev/null | grep -qE 'Bridge: enabled \\([1-9][0-9]* exported'",
+        "expected_exit": 0,
+        "fallback_on_probe_failure": "warn_only"
+      },
+      "upstream_issue": null,
+      "docs_ref": "docs/KNOWN-ISSUES.md#issue-2-wiki-bridge-import-returns-0-artifacts"
+    }
+  }
+}

@@ -559,20 +559,24 @@ if [ "$DRY_RUN" = false ]; then
     sed "s|{{WORKSPACE}}|$WORKSPACE|g" "$TOOLKIT_DIR/scripts/index-daily-logs-prompt.md" > "$WORKSPACE/scripts/index-daily-logs-prompt.md"
     echo "  Installed: index-daily-logs-prompt.md"
 
-    # ensure-dreaming-cron.sh — workaround for OpenClaw 2026.4.x reconciler bug
-    # that removes the managed dreaming cron on every gateway restart.
-    sed -e "s|{{WORKSPACE}}|$WORKSPACE|g" \
-        -e "s|{{PORT}}|$PORT|g" \
-        "$TOOLKIT_DIR/scripts/ensure-dreaming-cron.sh" > "$WORKSPACE/scripts/ensure-dreaming-cron.sh"
-    chmod +x "$WORKSPACE/scripts/ensure-dreaming-cron.sh"
-    echo "  Installed: ensure-dreaming-cron.sh (workaround for memory-core dreaming cron bug)"
+    # Upstream patch registry + runner. apply-upstream-patches.sh consults
+    # upstream-patches.json at the end of install to decide which workaround
+    # scripts and cron jobs to install for the user's OpenClaw version. This
+    # replaces inline workaround installation and means upgrading OpenClaw
+    # later (via flipclaw-update.sh) will automatically remove workarounds
+    # that are no longer needed.
+    cp "$TOOLKIT_DIR/scripts/upstream-patches.json" "$WORKSPACE/scripts/upstream-patches.json"
+    echo "  Installed: upstream-patches.json (patch registry)"
+    cp "$TOOLKIT_DIR/scripts/apply-upstream-patches.sh" "$WORKSPACE/scripts/apply-upstream-patches.sh"
+    chmod +x "$WORKSPACE/scripts/apply-upstream-patches.sh"
+    echo "  Installed: apply-upstream-patches.sh (version-aware workaround runner)"
 else
     echo "  Would install: incremental-memory-capture.py (model: $CAPTURE_MODEL)"
     echo "  Would install: memory-writer.py (legacy manual backfill only, model: $WRITER_MODEL)"
     echo "  Would install: curate-memory-prompt.md (legacy manual reference)"
     echo "  Would install: index-daily-logs-prompt.md"
     echo "  Would install: lockutil.py"
-    echo "  Would install: ensure-dreaming-cron.sh (dreaming cron heal workaround)"
+    echo "  Would install: upstream-patches.json + apply-upstream-patches.sh"
 fi
 
 # ──────────────────────────────────────────────────────────────
@@ -1105,57 +1109,21 @@ echo ""
 echo "  NOTE: memory-writer.py is kept on disk for manual backfill only."
 echo "  curate-memory-prompt.md is kept as reference for manual curation."
 
-# ── Dreaming cron heal workaround (OpenClaw 2026.4.x bug) ────────────
+# ── Upstream patch reconciliation ─────────────────────────────────────
 #
-# OpenClaw 2026.4.x has a bug where memory-core's
-# reconcileShortTermDreamingCronJob removes the managed "Memory Dreaming
-# Promotion" cron on every gateway startup, even when dreaming is enabled in
-# config. This breaks the auto-scheduled dreaming run.
-#
-# Workaround: register an OpenClaw cron job (NOT a system crontab entry —
-# system crontab is forbidden by Ari conventions) that fires shortly after the
-# nightly restart and runs ensure-dreaming-cron.sh, which detects the missing
-# managed cron and recreates it with the correct managed-by tag.
-#
-# Skipped on dry-run, and skipped if the gateway is unreachable (the cron can
-# be added manually later via:
-#   openclaw cron add --name "Restore Dreaming Cron After Restart" ...
-# )
+# Call the patch registry runner, which consults scripts/upstream-patches.json
+# to install workaround artifacts matching the installed OpenClaw version
+# (or remove ones that are no longer needed). This replaces the previous
+# inline dreaming-cron-heal block and makes version handling declarative.
 
-if [ "$DRY_RUN" = false ]; then
-    if curl -sf "http://localhost:${PORT}/health" >/dev/null 2>&1; then
-        # Check if heal cron already exists (idempotent install/update)
-        HEAL_EXISTS=$(OPENCLAW_CONFIG_PATH="$WORKSPACE/openclaw.json" \
-            openclaw cron list 2>/dev/null \
-            | grep -c "Restore Dreaming Cron After Restart" || true)
-
-        if [ "$HEAL_EXISTS" -ge 1 ]; then
-            echo "  Dreaming heal cron already exists; skipping"
-        else
-            OPENCLAW_CONFIG_PATH="$WORKSPACE/openclaw.json" openclaw cron add \
-                --name "Restore Dreaming Cron After Restart" \
-                --description "Workaround for OpenClaw 2026.4.x bug where memory-core reconciler removes managed dreaming cron on gateway startup. Runs scripts/ensure-dreaming-cron.sh shortly after the nightly restart to recreate the managed cron if missing." \
-                --cron "0 22 * * *" \
-                --tz "America/New_York" \
-                --session main \
-                --wake next-heartbeat \
-                --system-event "Memory dreaming cron health check after nightly restart. Run: exec $WORKSPACE/scripts/ensure-dreaming-cron.sh" \
-                >/dev/null 2>&1 \
-                && echo "  Installed: 'Restore Dreaming Cron After Restart' OpenClaw cron (22:00 ET daily)" \
-                || echo -e "  ${YELLOW}[WARN]${NC} Failed to add dreaming heal cron — add manually after gateway is up"
-        fi
-    else
-        echo -e "  ${YELLOW}[WARN]${NC} Gateway not reachable on port $PORT — skipping dreaming heal cron install."
-        echo "         After starting the gateway, run:"
-        echo "           OPENCLAW_CONFIG_PATH=\"$WORKSPACE/openclaw.json\" openclaw cron add \\"
-        echo "             --name \"Restore Dreaming Cron After Restart\" \\"
-        echo "             --cron \"0 22 * * *\" --tz \"America/New_York\" \\"
-        echo "             --session main --wake next-heartbeat \\"
-        echo "             --system-event \"Memory dreaming cron health check after nightly restart. Run: exec $WORKSPACE/scripts/ensure-dreaming-cron.sh\""
-    fi
-else
-    echo "  Would install: 'Restore Dreaming Cron After Restart' OpenClaw cron (22:00 ET daily)"
+PATCH_RUNNER_ARGS=(--workspace "$WORKSPACE" --port "$PORT" --toolkit-dir "$TOOLKIT_DIR")
+if [ "$DRY_RUN" = true ]; then
+    PATCH_RUNNER_ARGS+=(--dry-run)
 fi
+
+bash "$TOOLKIT_DIR/scripts/apply-upstream-patches.sh" "${PATCH_RUNNER_ARGS[@]}" || {
+    echo -e "  ${YELLOW}[WARN]${NC} Upstream patch reconciliation reported failures — review above"
+}
 
 # ──────────────────────────────────────────────────────────────
 # Step 9: Verify installation
@@ -1182,7 +1150,8 @@ else
 
     if [ -f "$WORKSPACE/scripts/incremental-memory-capture.py" ]; then check "Incremental capture script" "pass"; else check "Incremental capture" "fail" "not found"; fi
     if [ -f "$WORKSPACE/scripts/memory-writer.py" ]; then check "Memory writer script (legacy manual backfill)" "pass"; else check "Memory writer script (legacy manual backfill)" "warn" "not found"; fi
-    if [ -f "$WORKSPACE/scripts/ensure-dreaming-cron.sh" ] && [ -x "$WORKSPACE/scripts/ensure-dreaming-cron.sh" ]; then check "Dreaming cron heal script" "pass"; else check "Dreaming cron heal script" "fail" "not found or not executable"; fi
+    if [ -f "$WORKSPACE/scripts/upstream-patches.json" ]; then check "Upstream patch registry" "pass"; else check "Upstream patch registry" "fail" "not found"; fi
+    if [ -f "$WORKSPACE/scripts/apply-upstream-patches.sh" ] && [ -x "$WORKSPACE/scripts/apply-upstream-patches.sh" ]; then check "Upstream patch runner" "pass"; else check "Upstream patch runner" "fail" "not found or not executable"; fi
     if [ -f "$WORKSPACE/scripts/lockutil.py" ]; then check "Lock utility" "pass"; else check "Lock utility" "fail" "not found"; fi
     if [ -f "$WORKSPACE/scripts/curate-memory-prompt.md" ]; then check "Curation prompt" "pass"; else check "Curation prompt" "fail" "not found"; fi
     if [ -f "$WORKSPACE/scripts/index-daily-logs-prompt.md" ]; then check "Index prompt" "pass"; else check "Index prompt" "fail" "not found"; fi
