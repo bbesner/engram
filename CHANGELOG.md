@@ -45,13 +45,19 @@ Documentation and branding pass. All prose was swept for stale version reference
 
 ## [3.2.2] — 2026-04-11
 
-Minor release introducing the **upstream patch registry** — a declarative, version-aware framework for managing workarounds against known OpenClaw bugs. Both dreaming cron reconciler and wiki bridge zero-artifacts bugs documented in KNOWN-ISSUES.md were verified fixed in OpenClaw **2026.4.10**, and the registry now cleans up those workarounds automatically on upgrade. Also contains the BOOTSTRAP.md AI-installer, install-flow fixes for OpenClaw 2026.4.10's stricter config schema, and documentation overhaul differentiating FlipClaw custom features from OpenClaw stock features.
+**Headline feature: install FlipClaw in one command.** This release ships `BOOTSTRAP.md` — an executor-agnostic AI installer that handles the entire setup for you. Point Claude Code CLI (or any existing OpenClaw agent) at the bootstrap URL and it detects your environment, asks a few questions, and handles fresh installs, existing-Claude-Code installs, existing-OpenClaw installs, and split-machine (MCP bridge) setups automatically:
+
+```
+claude "Install FlipClaw. Read and follow the instructions at: https://raw.githubusercontent.com/bbesner/flipclaw/main/BOOTSTRAP.md"
+```
+
+Under the hood, this release also introduces the **upstream patch registry** (`scripts/upstream-patches.json` + `scripts/apply-upstream-patches.sh`) — a declarative, version-aware framework for managing workarounds against known OpenClaw bugs. Both dreaming cron reconciler and wiki bridge zero-artifacts bugs documented in KNOWN-ISSUES.md were verified fixed in OpenClaw **2026.4.10**, and the registry now cleans up those workarounds automatically when users upgrade. Plus install-flow fixes for OpenClaw 2026.4.10's stricter config schema, and a documentation overhaul differentiating FlipClaw custom features from OpenClaw stock features.
 
 ### Added
 
+- **`BOOTSTRAP.md`** — 🆕 **Headline feature.** Executor-agnostic AI installer that detects the user's environment and handles installation via Claude Code CLI or any OpenClaw agent. Covers four install paths: fresh (nothing installed), existing-Claude-Code (just needs FlipClaw + OpenClaw), existing-OpenClaw (just needs Claude Code + FlipClaw), and split-machine (Claude Code local + OpenClaw remote via MCP bridge). Handles environment detection, branching, API key validation, config scaffolding via `openclaw onboard`, `jq`-based env var injection, PM2 gateway start with the correct string-command form, and post-install health verification. One-command install replaces the multi-step manual flow.
 - **`scripts/upstream-patches.json`** — Declarative registry of FlipClaw workarounds for upstream OpenClaw bugs. Each entry records `broken_from`/`fixed_in` version ranges, workaround artifacts (scripts, cron jobs), and an optional runtime probe for regression safety. Single source of truth for version-conditional patch management.
 - **`scripts/apply-upstream-patches.sh`** — Version-aware runner that reads the registry, compares against the installed OpenClaw version, and installs or removes workaround artifacts accordingly. Called automatically by `install-memory.sh` and `flipclaw-update.sh` so OpenClaw upgrades trigger workaround cleanup with no user action.
-- **`BOOTSTRAP.md`** — Executor-agnostic AI installer that detects the environment and handles installation via Claude Code CLI or any OpenClaw agent. Covers four install paths: fresh, existing-Claude-Code, existing-OpenClaw, and split-machine (MCP bridge).
 - **`README.md` "What FlipClaw Adds to OpenClaw" section** — Explicitly differentiates FlipClaw custom features (per-turn memory capture, auto-skill capture, Claude Code bridge, crash sweep, updater, Telegram relay integration, MCP server for remote memory, patch registry) from OpenClaw stock features FlipClaw configures (memory-core Dreaming, Memory Wiki, semantic search, cron system, gateway).
 - **`README.md` "API Keys & Costs" section** — Correctly frames Gemini as the only hard requirement (memory-core embeddings) and every other LLM provider as user choice. Includes provider-swap example using Anthropic OAuth instead of OpenAI.
 - **`README.md` "Install in one command" top-level callout** — AI-bootstrap install command visible above the fold.
