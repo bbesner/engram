@@ -9,8 +9,9 @@
 # 4 AM ET (or whatever schedule the deep-dreaming config specifies) and trigger
 # the dreaming pipeline.
 #
-# Wired up via an OpenClaw cron job (created by install-memory.sh) that fires
-# shortly after the nightly restart and runs this script via Ari's exec tool.
+# Wired up via an OpenClaw cron job (created by FlipClaw's patch registry)
+# that fires shortly after the nightly restart and runs this script as a
+# systemEvent via the OpenClaw agent.
 #
 # Manual usage:
 #   /path/to/workspace/scripts/ensure-dreaming-cron.sh

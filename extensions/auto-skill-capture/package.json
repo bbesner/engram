@@ -1,7 +1,7 @@
 {
   "name": "auto-skill-capture",
   "version": "0.1.0",
-  "description": "Automatically captures reusable skills from completed agent sessions",
+  "description": "FlipClaw auto-skill-capture OpenClaw plugin — automatically generates reusable SKILL.md documents from complex agent sessions. Part of FlipClaw; not available in OpenClaw alone.",
   "main": "index.ts",
   "private": true,
   "engines": {

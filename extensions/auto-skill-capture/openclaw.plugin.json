@@ -1,8 +1,8 @@
 {
   "id": "auto-skill-capture",
-  "name": "Auto Skill Capture",
+  "name": "Auto Skill Capture (FlipClaw)",
   "version": "0.1.0",
-  "description": "Automatically captures reusable skills from completed agent sessions.",
+  "description": "FlipClaw — Automatically captures reusable SKILL.md documents from complex agent sessions via a two-gate heuristic + LLM classification pipeline. Part of FlipClaw; not a stock OpenClaw feature.",
   "entry": "./index.ts",
   "configSchema": {
     "type": "object",

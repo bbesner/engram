@@ -1,10 +1,12 @@
 # FlipClaw Architecture Reference
 
-**Version:** 3.2.1 | **Last updated:** 2026-04-10
+**Version:** 3.2.3 | **Last updated:** 2026-04-11
 
 This document is a comprehensive technical deep-dive into FlipClaw's internals. It covers every layer of the memory system, every pipeline stage, every configuration surface, and the update/backup lifecycle. Read this if you want to understand exactly how FlipClaw works before adopting it.
 
-**Minimum OpenClaw version:** `2026.4.9` — required for `memory-core` Dreaming, `memory-wiki` bridge mode, and `continuation-skip` context injection. All installers verify this before making changes.
+**Minimum OpenClaw version:** `2026.4.9` — enforced by all installers for `memory-core` Dreaming, `memory-wiki` bridge mode, and `continuation-skip` context injection.
+
+**Recommended OpenClaw version:** `2026.4.10` or later. Two upstream bugs documented in [KNOWN-ISSUES.md](KNOWN-ISSUES.md) (dreaming cron reconciler, wiki bridge listArtifacts) were fixed in `2026.4.10`. FlipClaw's **upstream patch registry** (`scripts/upstream-patches.json` + `scripts/apply-upstream-patches.sh`, added in v3.2.2) installs workarounds automatically when you're on `2026.4.9` and removes them automatically when you upgrade to `2026.4.10+`. You can install on 4.9 and work fine; upgrading to 4.10 is a clean win with no configuration changes required.
 
 ---
 
@@ -366,7 +368,7 @@ skill-extractor.py is triggered
      - Claude Code compensation: up to 50 bonus points from turn count + text volume
    - Threshold: score must reach 30
 
-4. GATE 2: LLM CLASSIFICATION (nano model)
+4. GATE 2: LLM CLASSIFICATION (gpt-5.4-mini by default)
    - Sends session summary + compressed transcript tail (last 8000 chars) to LLM
    - LLM responds: CAPTURE or SKIP
    - If CAPTURE: also returns title, category, confidence (0.0-1.0), and reason
@@ -765,25 +767,59 @@ This eliminates any ambiguity about which config the gateway is reading, even if
 
 ## Upstream OpenClaw Issues
 
-FlipClaw depends on OpenClaw and inherits its bugs. A few of those bugs are significant enough that FlipClaw ships automatic workarounds for them. See **[docs/KNOWN-ISSUES.md](KNOWN-ISSUES.md)** for the full catalog with symptoms, root causes, and workaround details. The most important ones for architecture understanding:
+FlipClaw depends on OpenClaw and inherits its bugs. A few of those bugs are significant enough that FlipClaw ships workarounds for them. See **[docs/KNOWN-ISSUES.md](KNOWN-ISSUES.md)** for the full catalog with symptoms, root causes, and workaround details.
+
+### Upstream patch registry (v3.2.2+)
+
+Starting in v3.2.2, FlipClaw manages upstream workarounds via a declarative registry:
+
+- **`scripts/upstream-patches.json`** — declarative entries with `broken_from` / `fixed_in` version ranges, workaround artifacts (scripts, cron jobs), and optional runtime probes
+- **`scripts/apply-upstream-patches.sh`** — version-aware runner that reads the registry, compares against your installed OpenClaw version, and installs or removes workaround artifacts accordingly
+
+Both `install-memory.sh` and `flipclaw-update.sh` call the runner automatically. The practical effect: upgrading OpenClaw between FlipClaw updates triggers automatic workaround reconciliation. Users on an old OpenClaw get the workarounds installed; users on a new OpenClaw get them cleanly removed, with no manual steps.
 
 ### Dreaming cron reconciler bug (Issue #1)
 
-On every gateway startup, `memory-core.reconcileShortTermDreamingCronJob` calls `resolveMemoryCorePluginConfig(api.config)` to read the current dreaming config. In 2026.4.x this resolver returns an empty config at startup hook time (likely a race with config loading), which the reconciler interprets as `dreaming.enabled: false` and removes any existing managed cron. The result: the managed dreaming cron works the first time it's created, then disappears on every subsequent restart.
+**Affected versions:** OpenClaw 2026.4.0 – 2026.4.9. **Fixed upstream in 2026.4.10.**
 
-**FlipClaw workaround:**
-- `scripts/ensure-dreaming-cron.sh` is installed to the workspace
-- A "Restore Dreaming Cron After Restart" OpenClaw cron job runs daily at 22:00 ET with `wakeMode: next-heartbeat`
-- The job asks the agent to exec the shell script
-- The script detects the missing managed cron and recreates it with the correct `[managed-by=memory-core.short-term-promotion]` tag, matching the format `buildManagedDreamingCronJob` would produce internally
+On every gateway startup in affected versions, `memory-core.reconcileShortTermDreamingCronJob` calls `resolveMemoryCorePluginConfig(api.config)` to read the current dreaming config. At startup hook time `api.config` is not yet populated, so the resolver returns an empty record, which the reconciler interprets as `dreaming.enabled: false` and removes any existing managed cron. The result: the managed dreaming cron works the first time it's created, then disappears on every subsequent restart.
 
-Both are idempotent. If upstream ever fixes the reconciler, the workaround sees the managed cron is already present and exits cleanly, so there's no harm in leaving it in place.
+**Upstream fix (2026.4.10):** a new `startupCfg` path is introduced that reads the config from the startup event payload (which carries the file-loaded config) *before* falling back to `api.config`:
+
+```js
+const startupCfg = params.reason === "startup" && params.startupEvent !== void 0
+    ? resolveStartupConfigFromEvent(params.startupEvent, api.config)
+    : api.config;
+const config = resolveShortTermPromotionDreamingConfig({
+    pluginConfig: resolveMemoryCorePluginConfig(startupCfg)
+        ?? resolveMemoryCorePluginConfig(api.config)
+        ?? api.pluginConfig,
+    cfg: startupCfg
+});
+```
+
+Verified by diffing 2026.4.9 vs 2026.4.10 source and by runtime test on a clean 2026.4.10 container.
+
+**FlipClaw workaround (registry id: `dreaming-cron-reconciler`):**
+
+On OpenClaw ≤ 2026.4.9 the patch registry installs:
+- `scripts/ensure-dreaming-cron.sh` — a standalone heal script templated with the workspace path and gateway port
+- **"Restore Dreaming Cron After Restart"** OpenClaw cron job running daily at 22:00 ET with `wakeMode: next-heartbeat`
+- The cron asks the agent to exec the heal script, which detects the missing managed cron and recreates it with the correct `[managed-by=memory-core.short-term-promotion]` tag
+
+On OpenClaw ≥ 2026.4.10 the registry removes both artifacts (the heal script and the cron job) automatically on the next `flipclaw-update.sh` or installer run. No user action required.
 
 ### Wiki bridge import returns 0 artifacts (Issue #2)
 
-In 2026.4.9, `memory-wiki`'s bridge mode calls `publicArtifacts.listArtifacts()` on the active memory plugin to discover artifacts to import. This call returns an empty list even when memory-core has hundreds of indexed files. `openclaw wiki bridge import` reports `Bridge import synced 0 artifacts across 0 workspaces` regardless of how much memory exists.
+**Affected versions:** OpenClaw 2026.4.0 – 2026.4.9. **Fixed upstream in 2026.4.10.**
 
-**FlipClaw workaround:** None automatic. Users must use `openclaw wiki ingest <file>` to pull specific files into the wiki manually. This is NOT a FlipClaw limitation — the wiki scaffold is correctly configured, the upstream import pipeline is broken.
+In affected versions, `memory-wiki`'s bridge mode calls `publicArtifacts.listArtifacts()` on the active memory plugin. This call returns an empty list even when memory-core has hundreds of indexed files — `openclaw wiki bridge import` reports `Bridge import synced 0 artifacts across 0 workspaces` regardless of how much memory exists.
+
+**Upstream fix (2026.4.10):** verified by runtime test. A clean install of OpenClaw 2026.4.10 with 5 memory artifacts on disk (MEMORY.md + 3 topic files + 1 dreaming report) reports `Bridge: enabled (5 exported artifacts)` and `Bridge import synced 5 artifacts across 1 workspaces` on first start. The fix lives outside the direct `listArtifacts` call chain (all the functions along that chain are byte-identical between 4.9 and 4.10) — the actual fix is probably in config / agent-list resolution that happens earlier in the startup sequence, but the observable behavior is fully resolved.
+
+**FlipClaw handling (registry id: `wiki-bridge-zero-artifacts`):**
+
+No automatic workaround ships. On 4.9 users must use `openclaw wiki ingest <file>` to pull specific files into the wiki manually; on 4.10+ the bridge works automatically on first start. The registry's runtime probe (`openclaw wiki status | grep -qE 'Bridge: enabled \([1-9][0-9]* exported'`) can verify the fix is active after upgrade.
 
 ### Legacy `auth.profiles.*.primary` (Issue #3)
 
@@ -811,9 +847,9 @@ Written by the installer at install time, this file is the single source of trut
 
 ```json
 {
-  "flipclaw_version": "3.2.0",
-  "openclaw_version": "2026.4.9",
-  "installed_at": "2026-04-10",
+  "flipclaw_version": "3.2.3",
+  "openclaw_version": "2026.4.10",
+  "installed_at": "2026-04-11",
   "workspace": "/home/user/agent",
   "agent_name": "MyAgent",
   "port": "3050",
@@ -927,7 +963,7 @@ This avoids creating spurious empty `vunknown-{timestamp}` directories on fresh 
 The updater (`flipclaw-update.sh`) follows this sequence:
 
 ```
-1. Verify OpenClaw >= 2026.4.9           (fail fast)
+1. Verify OpenClaw >= 2026.4.9           (fail fast; 2026.4.10+ recommended)
 2. Read .flipclaw-install.json           (user params)
 3. Check versions (local vs GitHub)      (semver comparison)
 4. Download toolkit archive              (3 retries on transient failure)
@@ -939,6 +975,7 @@ The updater (`flipclaw-update.sh`) follows this sequence:
 10. Update .flipclaw-install.json         (version + history entry)
 11. Validate                              (Python/shell syntax checks)
 12. If validation fails: offer rollback   (interactive y/N)
+13. Reconcile upstream patch registry    (install/remove workarounds by version)
 ```
 
 ### Smart Prompt Template Handling
@@ -997,7 +1034,7 @@ Both the updater and the health check use proper semver comparison (via `sort -V
 
 ### OpenClaw Version Enforcement
 
-All three installers (`install-memory.sh`, `install-claude-code.sh`) and the updater verify OpenClaw >= `2026.4.9` before making any changes. If OpenClaw is missing or too old, the script exits immediately with a clear message and upgrade command:
+Both installers (`install-memory.sh`, `install-claude-code.sh`) and the updater verify OpenClaw >= `2026.4.9` before making any changes. If OpenClaw is missing or too old, the script exits immediately with a clear message and upgrade command:
 
 ```
 ERROR: OpenClaw 2026.4.8 is too old.
@@ -1011,7 +1048,9 @@ Upgrade OpenClaw:
   npm install -g openclaw@latest
 ```
 
-The installed OpenClaw version is recorded in `.flipclaw-install.json` as `openclaw_version` and updated on every installer and updater run. The health check (check #11) verifies this on every run.
+**Recommended version is 2026.4.10 or later** — it ships upstream fixes for the dreaming cron reconciler and wiki bridge bugs. FlipClaw's patch registry handles both the 2026.4.9 workaround install and the 2026.4.10 workaround cleanup automatically, so either version works, but 2026.4.10+ is the clean state.
+
+The installed OpenClaw version is recorded in `.flipclaw-install.json` as `openclaw_version` and updated on every installer and updater run. The health check verifies this on every run.
 
 ---
 
@@ -1111,8 +1150,8 @@ Chunks are stored on disk at `logs/.mcp-chunks/` and cleaned up after reassembly
 | File | Description |
 |------|-------------|
 | `install.sh` | Combined installer -- runs install-memory.sh then install-claude-code.sh |
-| `install-memory.sh` | Memory pipeline installer: capture scripts, extensions, Dreaming, Wiki, search config. Enforces OpenClaw >= 2026.4.9. Creates rollback snapshots on upgrade. |
-| `install-claude-code.sh` | Claude Code integration installer: hooks, bridge, sweep, health check, updater, CLAUDE.md. Enforces OpenClaw >= 2026.4.9. |
+| `install-memory.sh` | Memory pipeline installer: capture scripts, extensions, Dreaming, Wiki, search config. Enforces OpenClaw >= 2026.4.9 (2026.4.10+ recommended). Creates rollback snapshots on upgrade. Calls `apply-upstream-patches.sh` during install. |
+| `install-claude-code.sh` | Claude Code integration installer: hooks, bridge, sweep, health check, updater, CLAUDE.md. Enforces OpenClaw >= 2026.4.9 (2026.4.10+ recommended). |
 | `VERSION` | Toolkit version (semver + date) |
 | `CHANGELOG.md` | Keep-a-changelog format release notes |
 | `README.md` | User-facing documentation and quick start guide |
@@ -1127,13 +1166,16 @@ Chunks are stored on disk at `logs/.mcp-chunks/` and cleaned up after reassembly
 | `claude-code-bridge.py` | SessionEnd hook handler -- converts Claude Code transcripts, manages resume detection, rate limiting, triggers skill extraction |
 | `claude-code-turn-capture.py` | Stop hook handler -- per-turn fact extraction during active Claude Code sessions |
 | `claude-code-sweep.py` | Cron job -- catches sessions missed by the SessionEnd hook (crashes, force-kills) |
-| `claude-code-update-check.sh` | 11-point health check script including FlipClaw version (#10) and OpenClaw minimum version (#11) |
-| `flipclaw-update.sh` | Self-service updater with snapshot backups, post-update validation, rollback, and version pinning |
+| `claude-code-update-check.sh` | 12-point health check script including FlipClaw version and OpenClaw minimum version |
+| `flipclaw-update.sh` | Self-service updater with snapshot backups, post-update validation, rollback, version pinning, and automatic patch registry reconciliation |
 | `claude-code-bridge-remote.sh` | Helper script for remote bridge invocation |
 | `incremental-memory-capture.py` | Core fact extraction engine -- reads session windows, classifies, calls LLM, routes facts to memory files |
 | `memory-writer.py` | Legacy manual backfill tool -- writes structured memory from daily logs (not part of active pipeline) |
 | `skill-extractor.py` | Auto-skill-capture pipeline -- Gate 1 heuristics, Gate 2 LLM classification, dedup, generation, write |
 | `lockutil.py` | File-based locking utility using fcntl.flock -- prevents concurrent write corruption |
+| `upstream-patches.json` | Declarative registry of upstream OpenClaw bug workarounds (v3.2.2+) -- single source of truth for version-conditional patch management |
+| `apply-upstream-patches.sh` | Version-aware patch runner (v3.2.2+) -- reads `upstream-patches.json`, compares against installed OpenClaw version, installs or removes workaround artifacts accordingly. Called automatically by `install-memory.sh` and `flipclaw-update.sh` |
+| `ensure-dreaming-cron.sh` | Dreaming cron heal script (installed conditionally by the patch registry only on OpenClaw ≤ 2026.4.9; removed automatically when upgrading to 2026.4.10+) |
 | `curate-memory-prompt.md` | LLM prompt template for manual memory curation (legacy reference) |
 | `index-daily-logs-prompt.md` | LLM prompt template for daily log indexing (legacy reference) |
 

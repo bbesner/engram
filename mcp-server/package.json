@@ -1,7 +1,7 @@
 {
-  "name": "openclaw-memory-mcp",
+  "name": "flipclaw-memory-mcp",
   "version": "1.0.0",
-  "description": "MCP server exposing OpenClaw agent memory for remote Claude Code access",
+  "description": "FlipClaw MCP server — exposes an OpenClaw agent's shared memory (MEMORY.md, memory/*, skills/) to a remote Claude Code CLI over stdio. Ships as part of FlipClaw.",
   "main": "server.mjs",
   "type": "module",
   "private": true,

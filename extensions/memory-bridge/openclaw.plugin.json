@@ -1,8 +1,8 @@
 {
   "id": "memory-bridge",
-  "name": "Memory Bridge",
+  "name": "Memory Bridge (FlipClaw)",
   "version": "1.0.0",
-  "description": "Post-turn memory capture — extracts durable facts from each conversation turn into daily logs and session cache.",
+  "description": "FlipClaw — Post-turn memory capture. Fires after every agent turn and runs incremental-memory-capture.py to extract durable facts into daily logs and session cache. Part of FlipClaw; not a stock OpenClaw feature.",
   "entry": "./index.ts",
   "configSchema": {
     "type": "object",

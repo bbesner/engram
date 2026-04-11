@@ -7,6 +7,37 @@ Versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
 
+## [3.2.3] — 2026-04-11
+
+Documentation and branding pass. All prose was swept for stale version references and outdated upstream-bug framing after the v3.2.2 patch registry landed; extensions and the MCP server now self-identify as FlipClaw components so users can tell what FlipClaw adds versus what's stock OpenClaw.
+
+### Documentation
+
+- **`docs/ARCHITECTURE.md`** — version header bumped 3.2.1 → 3.2.3. Minimum OpenClaw clarified: enforcement stays at `2026.4.9` but `2026.4.10` is now the **recommended** version (both known upstream bugs are fixed there and the patch registry handles reconciliation automatically).
+- **`docs/ARCHITECTURE.md` "Upstream OpenClaw Issues" section** — full rewrite. Issue #1 (dreaming cron reconciler) and Issue #2 (wiki bridge listArtifacts) marked **fixed in 2026.4.10** with the upstream code diff for Issue #1 and the runtime-test verification for Issue #2. Both now document the patch registry's install/remove behavior on each version.
+- **`docs/ARCHITECTURE.md` scripts/ file reference table** — added `upstream-patches.json` and `apply-upstream-patches.sh` entries; `ensure-dreaming-cron.sh` reclassified as conditional (installed only on OpenClaw ≤ 2026.4.9). Updater flow diagram gained a Step 13 for patch registry reconciliation.
+- **`docs/ARCHITECTURE.md`** — Gate 2 description fixed: `nano model` → `gpt-5.4-mini by default` (matches the v3.2.2 plugin schema fix and what `install-memory.sh` actually writes). Health check count fixed from `11-point` to `12-point`. Installer descriptions in the file reference table now note `2026.4.10+ recommended`.
+- **`docs/TROUBLESHOOTING.md`** — Minimum OpenClaw wording updated to mention the `2026.4.10` recommendation. Customer-specific gateway name (`ultra-gateway`) genericized to `<gateway-name>`.
+- **`docs/TROUBLESHOOTING.md` "Nightly dreaming runs never seem to execute" section** — now leads with the 2026.4.10 upgrade as the preferred fix. Workaround path for stuck-on-4.9 users documented with both the full registry re-run and the one-shot heal script.
+- **`docs/TROUBLESHOOTING.md` "Memory Wiki shows 0 exported artifacts" section** — removed "waiting on upstream OpenClaw fix" status. Now leads with the 2026.4.10 upgrade; manual ingest retained as the 4.9 fallback with a `find`-based loop example.
+- **`docs/KNOWN-ISSUES.md` summary table** — renamed from "Summary of v3.2.1 workarounds" to "Summary of workarounds (v3.2.2+)". New columns for `Fixed in OpenClaw`, `FlipClaw Action (≤ 4.9)`, and `FlipClaw Action (≥ 4.10)`. Issues #1 and #2 now explicitly show the automatic workaround removal path.
+- **`docs/KNOWN-ISSUES.md` "Reporting these upstream" section** — acknowledges the upstream fixes for Issues #1 and #2 and notes that the patch registry makes future upstream fixes cheap to adopt.
+
+### Changed
+
+- **`mcp-server/package.json`** — `"name": "openclaw-memory-mcp"` → `"flipclaw-memory-mcp"`. Description rewritten to explicitly identify it as a FlipClaw component that wraps an OpenClaw agent's shared memory.
+- **`mcp-server/server.mjs`** — file header comment updated from "OpenClaw Memory MCP Server" to "FlipClaw MCP Server (flipclaw-memory-mcp)" with provenance note.
+- **`extensions/auto-skill-capture/openclaw.plugin.json`** — plugin display name now `Auto Skill Capture (FlipClaw)`. Description rewritten to identify it as FlipClaw value-add.
+- **`extensions/auto-skill-capture/package.json`** — same.
+- **`extensions/memory-bridge/openclaw.plugin.json`** — plugin display name now `Memory Bridge (FlipClaw)`. Description rewritten to identify it as FlipClaw value-add that fires per-turn memory capture.
+- **`scripts/ensure-dreaming-cron.sh`** — header comment updated: removed reference to "Ari's exec tool" (which leaked a project-specific agent name into the public toolkit) in favor of the generic "OpenClaw agent systemEvent" framing.
+
+### Removed
+
+- **`BUGS-FOR-3.2.1.md`** — this file was never in the public repo (`.gitignore` has `BUGS-FOR-*.md`) but existed in local working copies from the 3.2.1 release cycle. Noted here for clarity; no history rewrite needed.
+
+---
+
 ## [3.2.2] — 2026-04-11
 
 Minor release introducing the **upstream patch registry** — a declarative, version-aware framework for managing workarounds against known OpenClaw bugs. Both dreaming cron reconciler and wiki bridge zero-artifacts bugs documented in KNOWN-ISSUES.md were verified fixed in OpenClaw **2026.4.10**, and the registry now cleans up those workarounds automatically on upgrade. Also contains the BOOTSTRAP.md AI-installer, install-flow fixes for OpenClaw 2026.4.10's stricter config schema, and documentation overhaul differentiating FlipClaw custom features from OpenClaw stock features.

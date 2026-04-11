@@ -230,26 +230,26 @@ module.exports = {
 
 ---
 
-## Summary of v3.2.1 workarounds
+## Summary of workarounds (v3.2.2+)
 
-| Issue | FlipClaw Action | User Action |
-|-------|----------------|-------------|
-| 1. Dreaming cron reconciler bug | Installs `ensure-dreaming-cron.sh` + daily heal cron | None |
-| 2. Wiki bridge import returns 0 | No automatic workaround | Manual `openclaw wiki ingest` |
-| 3. Legacy `auth.profiles.*.primary` | Auto-sanitizes during install | None |
-| 4. openclaw-mem0 auto-discovery | Moves directory aside + removes from config | None |
-| 5. Two-config resolution | Syncs plugin config to both files | Set `OPENCLAW_CONFIG_PATH` in start scripts (recommended) |
+Starting in v3.2.2, FlipClaw manages version-conditional workarounds via a declarative patch registry at `scripts/upstream-patches.json`. The runner at `scripts/apply-upstream-patches.sh` is invoked on every install and update, so upgrading OpenClaw to a version that ships an upstream fix automatically removes the corresponding workaround.
+
+| Issue | Fixed in OpenClaw | FlipClaw Action (≤ 2026.4.9) | FlipClaw Action (≥ 2026.4.10) | User Action |
+|-------|---|---|---|-------------|
+| 1. Dreaming cron reconciler bug | **2026.4.10** | Installs `ensure-dreaming-cron.sh` + daily heal cron via patch registry | Removes heal script + cron automatically on next update | None — automatic reconciliation |
+| 2. Wiki bridge import returns 0 | **2026.4.10** | Manual `openclaw wiki ingest` (no auto-workaround) | Nothing to remove — just upgrade and it works | Upgrade OpenClaw |
+| 3. Legacy `auth.profiles.*.primary` | Not fixed upstream | Auto-sanitizes during install | Auto-sanitizes during install | None |
+| 4. openclaw-mem0 auto-discovery | Not fixed upstream | Moves directory aside + removes from config | Moves directory aside + removes from config | None |
+| 5. Two-config resolution | Not a bug — working-as-designed | Syncs plugin config to both files | Syncs plugin config to both files | Set `OPENCLAW_CONFIG_PATH` in start scripts (recommended) |
 
 ---
 
 ## Reporting these upstream
 
-If you maintain OpenClaw or know how to report bugs to its maintainers, these issues would benefit from being fixed upstream:
+The two major bugs (Issues #1 and #2) have been **fixed in OpenClaw 2026.4.10** and verified by source inspection and runtime test. Thanks to whoever upstream fixed them. If you maintain OpenClaw, these remaining issues would benefit from being addressed:
 
-1. **Issue #1 is a real bug** with a likely fix in the dreaming cron reconciler (probably a config resolution race condition at startup hook time)
-2. **Issue #2 is a real bug** — the bridge artifact export path appears to be broken in memory-core
-3. **Issue #3 is a minor inconvenience** that should be handled by `openclaw doctor --fix`
-4. **Issue #4 is a usability issue** — auto-discovery should respect `plugins.entries.<name>.enabled: false`
-5. **Issue #5 is working-as-designed** but documentation could be clearer
+1. **Issue #3** is a minor inconvenience that should be handled by `openclaw doctor --fix`
+2. **Issue #4** is a usability issue — plugin auto-discovery should respect `plugins.entries.<name>.enabled: false`
+3. **Issue #5** is working-as-designed but documentation could be clearer
 
-FlipClaw maintains these workarounds so users don't have to understand OpenClaw internals to get a working install. When upstream fixes land, we'll remove the corresponding workaround code and update this document.
+FlipClaw's patch registry (v3.2.2+) makes future upstream fixes cheap to adopt: update `scripts/upstream-patches.json` with the new `fixed_in` version, and every user running `flipclaw-update.sh` on an upgraded OpenClaw will automatically have their workarounds removed.

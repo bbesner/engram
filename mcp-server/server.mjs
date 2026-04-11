@@ -1,9 +1,12 @@
 #!/usr/bin/env node
 /**
- * OpenClaw Memory MCP Server (v2.0)
+ * FlipClaw MCP Server (v2.0) — flipclaw-memory-mcp
  *
- * Exposes an OpenClaw agent's memory system as MCP tools for remote
- * Claude Code instances. Runs as a stdio MCP server.
+ * Exposes an OpenClaw agent's shared memory system (MEMORY.md, memory/*,
+ * skills/) as MCP tools for a remote Claude Code CLI. Ships as part of
+ * FlipClaw — installed by install-claude-code.sh when --with-mcp is set,
+ * configured in Claude Code's settings.json under `mcpServers`, and runs
+ * as a stdio MCP server (spawned on demand by Claude Code).
  *
  * Read Tools:
  *   memory_search      — Semantic search via openclaw memory search

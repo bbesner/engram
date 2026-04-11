@@ -10,7 +10,7 @@ For upstream OpenClaw bugs that FlipClaw works around automatically, see [KNOWN-
 
 ### `ERROR: OpenClaw X.Y.Z is too old`
 
-**Cause:** You're running an OpenClaw version older than the minimum FlipClaw requires (currently `2026.4.9`).
+**Cause:** You're running an OpenClaw version older than the minimum FlipClaw enforces (currently `2026.4.9`). **2026.4.10 or later is recommended** — it ships upstream fixes for the dreaming cron reconciler and wiki bridge bugs that FlipClaw otherwise works around via the patch registry.
 
 **Fix:**
 ```bash
@@ -20,7 +20,7 @@ openclaw --version   # verify
 
 Then restart any running agent gateways:
 ```bash
-pm2 restart ultra-gateway   # or whatever your gateway is named
+pm2 restart <gateway-name>   # use your actual PM2 process name
 ```
 
 > The OpenClaw binary is global, so upgrading affects every agent on the server. Plan a brief restart window if other agents are in production use.
@@ -256,30 +256,49 @@ bash /path/to/flipclaw/install.sh --agent-name Foo --workspace /path --port 3050
 - `memory/dreaming/` directory has no new reports after 4 AM ET
 - MEMORY.md never gets updated via Dreaming
 
-**Cause:** OpenClaw 2026.4.x has a bug where `memory-core.reconcileShortTermDreamingCronJob` removes the managed dreaming cron on every gateway startup. See [KNOWN-ISSUES.md](KNOWN-ISSUES.md) for full technical details.
+**Cause:** OpenClaw 2026.4.0–2026.4.9 has a bug where `memory-core.reconcileShortTermDreamingCronJob` removes the managed dreaming cron on every gateway startup. See [KNOWN-ISSUES.md](KNOWN-ISSUES.md) for full technical details.
 
-**Fix:** v3.2.1+ ships an `ensure-dreaming-cron.sh` workaround script and registers a daily OpenClaw cron job that re-creates the dreaming cron after each nightly restart. No action needed on fresh installs.
+**Fix (preferred — upgrade):** This bug is **fixed upstream in OpenClaw 2026.4.10**. Upgrade OpenClaw and re-run the FlipClaw updater; the patch registry will automatically remove the workaround cron and heal script you no longer need:
+```bash
+sudo npm install -g openclaw@latest
+openclaw --version   # should now report 2026.4.10 or later
+pm2 restart <gateway-name>
+bash $WORKSPACE/scripts/flipclaw-update.sh   # reconciles the patch registry
+```
 
-Manual fix (one-shot):
+**Fix (if stuck on 2026.4.9):** v3.2.2+ ships a version-aware patch registry. On OpenClaw ≤ 2026.4.9 it installs `ensure-dreaming-cron.sh` and a "Restore Dreaming Cron After Restart" OpenClaw cron automatically. If the cron is missing, re-run the registry:
+```bash
+bash $WORKSPACE/scripts/apply-upstream-patches.sh \
+  --workspace $WORKSPACE \
+  --port <your-port>
+openclaw cron list | grep -i dreaming   # should now show the Memory Dreaming Promotion job
+```
+
+Or trigger the heal script directly one-shot:
 ```bash
 bash $WORKSPACE/scripts/ensure-dreaming-cron.sh
-openclaw cron list | grep -i dreaming   # should now show the Memory Dreaming Promotion job
 ```
 
 ---
 
 ### Memory Wiki shows "Bridge: enabled (0 exported artifacts)"
 
-**Cause:** Upstream OpenClaw 2026.4.9 bug — `publicArtifacts.listArtifacts()` returns empty even though the bridge is correctly configured. Affects `openclaw wiki bridge import`. See [KNOWN-ISSUES.md](KNOWN-ISSUES.md).
+**Cause:** Upstream OpenClaw 2026.4.0–2026.4.9 bug — `publicArtifacts.listArtifacts()` returns empty even though the bridge is correctly configured. `openclaw wiki bridge import` reports `Bridge import synced 0 artifacts` regardless of how much memory exists. See [KNOWN-ISSUES.md](KNOWN-ISSUES.md).
 
-**Workaround:** Use manual ingest for individual files:
+**Fix (preferred — upgrade):** This bug is **fixed upstream in OpenClaw 2026.4.10**. Verified by runtime test on a clean 2026.4.10 install: wiki bridge reports the correct artifact count and `openclaw wiki bridge import` imports all artifacts.
+```bash
+sudo npm install -g openclaw@latest
+pm2 restart <gateway-name>
+openclaw wiki status   # should now report the correct artifact count
+```
+
+**Workaround (if stuck on 2026.4.9):** Use manual ingest for individual files — this bypasses the broken `listArtifacts` path entirely:
 ```bash
 openclaw wiki ingest $WORKSPACE/memory/decisions.md
 openclaw wiki ingest $WORKSPACE/memory/infrastructure.md
-# ... etc
+# ... or all memory/*.md files:
+find $WORKSPACE/memory -maxdepth 1 -name '*.md' -exec openclaw wiki ingest {} \;
 ```
-
-**Status:** Waiting on upstream OpenClaw fix. This is NOT a FlipClaw bug.
 
 ---
 
