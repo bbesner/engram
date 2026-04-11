@@ -22,6 +22,7 @@ Documentation and branding pass. All prose was swept for stale version reference
 - **`docs/TROUBLESHOOTING.md` "Memory Wiki shows 0 exported artifacts" section** — removed "waiting on upstream OpenClaw fix" status. Now leads with the 2026.4.10 upgrade; manual ingest retained as the 4.9 fallback with a `find`-based loop example.
 - **`docs/KNOWN-ISSUES.md` summary table** — renamed from "Summary of v3.2.1 workarounds" to "Summary of workarounds (v3.2.2+)". New columns for `Fixed in OpenClaw`, `FlipClaw Action (≤ 4.9)`, and `FlipClaw Action (≥ 4.10)`. Issues #1 and #2 now explicitly show the automatic workaround removal path.
 - **`docs/KNOWN-ISSUES.md` "Reporting these upstream" section** — acknowledges the upstream fixes for Issues #1 and #2 and notes that the patch registry makes future upstream fixes cheap to adopt.
+- **`CONTRIBUTING.md`** — Expanded from 33 lines to 112. New "Testing changes" section documents the LXD-container smoke-test workflow used to verify v3.2.2 end-to-end (clean Ubuntu 24.04 + OpenClaw 2026.4.10, `openclaw onboard` → `jq` env injection → `install.sh --gemini-key` → `pm2 start --name X "openclaw gateway run"` → `/health` probe → 12-point health check). New "Adding new upstream patches" section documents how to add a registry entry for a new upstream bug workaround (pointing at `scripts/upstream-patches.json` as the single source of truth). Adds JSON registry formatting note to the Code Style section.
 
 ### Changed
 
@@ -31,6 +32,10 @@ Documentation and branding pass. All prose was swept for stale version reference
 - **`extensions/auto-skill-capture/package.json`** — same.
 - **`extensions/memory-bridge/openclaw.plugin.json`** — plugin display name now `Memory Bridge (FlipClaw)`. Description rewritten to identify it as FlipClaw value-add that fires per-turn memory capture.
 - **`scripts/ensure-dreaming-cron.sh`** — header comment updated: removed reference to "Ari's exec tool" (which leaked a project-specific agent name into the public toolkit) in favor of the generic "OpenClaw agent systemEvent" framing.
+- **`docs/hero.svg`** — Bottom-banner label "WHAT OPENCLAW ADDS TO CLAUDE CODE" → "WHAT FLIPCLAW ADDS TO CLAUDE CODE". Four of the six badges below it (Persistent Memory, Nightly Dreaming, Memory Wiki, Cron Jobs & Heartbeats) are stock OpenClaw features, but without FlipClaw Claude Code can reach none of them — FlipClaw is what delivers the entire bundle to the Claude Code CLI, so the accurate framing is "what FlipClaw adds".
+- **`LICENSE`** — Added a `FlipClaw` header line above the standard MIT text and appended `(FlipClaw project)` to the copyright line. Body text unchanged. The file was carried forward from the Engram era without naming the software it covers; this fixes the project identification without altering license terms.
+- **`templates/CLAUDE.md.template`** — Header line 3 now credits FlipClaw explicitly: "Installed by: [FlipClaw](https://github.com/bbesner/flipclaw) on {{DATE}}" with the update command inline. Previously said only "Installed: {{DATE}}" with no project identifier.
+- **`templates/CLAUDE-append.md.template`** — Added two HTML-comment provenance lines at the top of the append block identifying FlipClaw as the installer and pointing at `flipclaw-update.sh`. Invisible in rendered markdown but visible in raw view, so agents using this append block can trace its origin.
 
 ### Removed
 
