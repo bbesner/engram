@@ -1,6 +1,6 @@
 # {{AGENT_NAME}} Memory Integration — Claude Code CLI
 
-**Installed:** {{DATE}} | **Toolkit version:** See {{WORKSPACE}}/.toolkit-version
+**Installed by:** [FlipClaw](https://github.com/bbesner/flipclaw) on {{DATE}} | **Toolkit version:** See `{{WORKSPACE}}/.toolkit-version` | **Update:** `bash {{WORKSPACE}}/scripts/flipclaw-update.sh`
 
 ## CRITICAL: Memory System — {{AGENT_NAME}} Is the Single Source of Truth
 

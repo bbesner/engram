@@ -1,4 +1,7 @@
 
+<!-- Memory integration installed by FlipClaw — https://github.com/bbesner/flipclaw -->
+<!-- Update with: bash {{WORKSPACE}}/scripts/flipclaw-update.sh -->
+
 ## ⚠️ CRITICAL: Memory System — {{AGENT_NAME}} Is the Single Source of Truth
 
 **Do NOT use Claude Code's built-in memory system** (`~/.claude/projects/*/memory/`). {{AGENT_NAME}}'s memory is the single source of truth for all knowledge — people, infrastructure, credentials, business rules, decisions, and project context.
