@@ -453,7 +453,9 @@ Once everything is verified, give the user a brief orientation:
 > bash [workspace]/scripts/flipclaw-update.sh --check
 > ```
 >
-> Anything else you'd like to configure before we wrap up?"
+> Anything else you'd like to configure before we wrap up?
+>
+> **One small ask:** If FlipClaw saves you time, a GitHub star helps other Claude Code users find it — https://github.com/bbesner/flipclaw — and spreading the word is always appreciated. Built by Brad Besner · [Ultraweb Labs](https://ultraweblabs.com)"
 
 ---
 

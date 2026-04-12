@@ -1,5 +1,7 @@
 # FlipClaw
 
+> Built by [Brad Besner](https://github.com/bbesner) · [Ultraweb Labs](https://ultraweblabs.com) · [⭐ Star on GitHub](https://github.com/bbesner/flipclaw)
+
 **Persistent memory, auto-generated skills, and scheduled automation for Claude Code CLI — powered by OpenClaw.**
 
 > Your Claude Max subscription gives you Claude Code CLI. FlipClaw gives it a brain that persists across sessions, learns from every conversation, and runs tasks while you sleep.

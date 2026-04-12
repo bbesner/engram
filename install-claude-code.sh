@@ -185,6 +185,7 @@ echo "============================================"
 echo -e "${BLUE}Claude Code ↔ OpenClaw Memory Integration${NC}"
 echo "Toolkit version: $TOOLKIT_VERSION"
 echo "OpenClaw:        $OPENCLAW_VERSION (min: $MIN_OPENCLAW_VERSION)"
+echo "Built by:        Brad Besner — github.com/bbesner/flipclaw"
 echo "============================================"
 echo ""
 echo "  Agent name:     $AGENT_NAME"
@@ -823,5 +824,11 @@ else
     if [ "$SHARED" = true ]; then
         echo "  4. Add users to the shared group (see Step 6 output above)"
     fi
+    echo ""
+    echo -e "  ${BLUE}If FlipClaw saves you time:${NC}"
+    echo "  ★  Star it on GitHub — https://github.com/bbesner/flipclaw"
+    echo "     It helps others find the project."
+    echo ""
+    echo "  Built by Brad Besner · Ultraweb Labs"
 fi
 echo "============================================"
