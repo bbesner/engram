@@ -12,7 +12,7 @@ This document is a comprehensive technical deep-dive into FlipClaw's internals. 
 
 ## Overview
 
-FlipClaw bridges Claude Code CLI with OpenClaw's memory infrastructure. It gives Claude Code persistent memory, automatic skill capture, nightly consolidation (Dreaming), semantic search, and a browsable knowledge wiki -- all backed by the same file-based memory system your OpenClaw agent already uses.
+FlipClaw exists because Anthropic removed subscription OAuth from third-party harnesses, which means OpenClaw can no longer run Claude on a Max subscription. FlipClaw flips the architecture: Claude Code CLI (which still works on Max) becomes the primary interface, and OpenClaw wraps around it as the infrastructure layer. This gives Claude Code persistent memory, automatic skill capture, nightly consolidation (Dreaming), semantic search, and a browsable knowledge wiki -- all backed by the same file-based memory system your OpenClaw agent already uses. One shared system between both interfaces.
 
 The core design principle is **shared memory**: both Claude Code sessions and OpenClaw agent sessions read from and write to the same set of Markdown files. Facts from Claude Code are tagged with `[src:claude-code]` for provenance, but otherwise flow through the same extraction, consolidation, and promotion pipeline as native agent facts.
 

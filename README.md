@@ -2,9 +2,9 @@
 
 > Built by [Brad Besner](https://github.com/bbesner) · [Ultraweb Labs](https://ultraweblabs.com) · [⭐ Star on GitHub](https://github.com/bbesner/flipclaw)
 
-**Persistent memory, auto-generated skills, and scheduled automation for Claude Code CLI — powered by OpenClaw.**
+**Anthropic killed free OpenClaw. FlipClaw gives you Opus 4.6 back — on your Max subscription — without losing your OpenClaw infrastructure.**
 
-> Your Claude Max subscription gives you Claude Code CLI. FlipClaw gives it a brain that persists across sessions, learns from every conversation, and runs tasks while you sleep.
+> When Anthropic removed subscription OAuth from third-party harnesses, the OpenClaw community lost access to Claude on their existing plans. Most people switched to GPT-5.4 or local models. None of them perform like Opus 4.6. FlipClaw solves this by flipping the architecture: Claude Code CLI becomes your primary interface (on your Max subscription), and OpenClaw wraps around it as the persistent memory, cron, and automation layer. One shared system. Best of both worlds.
 
 <p align="center">
   <a href="https://raw.githubusercontent.com/bbesner/flipclaw/main/docs/hero.svg">
@@ -31,30 +31,46 @@
 
 If you're running Claude through a third-party harness like OpenClaw, Anthropic's recent OAuth changes mean those conversations now cost API rates or extra usage billing. Your flat-rate Max subscription no longer covers it.
 
-But **Claude Code CLI still works on Max.** It's not just the best coding AI — it's the best agentic AI interface available, period. VS Code, Claude Code Desktop, or the terminal. Included in your subscription, no API metering.
+Most people have tried the obvious alternatives:
 
-The catch? Claude Code has no memory. Every session starts from zero — no recall of your infrastructure, no awareness of decisions you've already made, and no automations.
+- **Switch to GPT-5.4 via OpenAI's subscription OAuth** — works, but the consensus across the community is clear: it doesn't perform nearly as well as Claude Opus 4.6 inside OpenClaw.
+- **Switch to open-source or local models** — same story. None of them match Opus 4.6 for agentic work.
+- **Pay API rates for Claude** — viable if your budget allows hundreds to thousands per month. For most people, it doesn't.
 
-## The Solution: Turn the Tables
+Meanwhile, your OpenClaw agent *is* your infrastructure. Your cron jobs, heartbeats, personality, skill library, memory system, and 24/7 automation — that's months of investment you can't just throw away.
 
-Instead of putting Claude Code inside OpenClaw as its model, FlipClaw flips it — **Claude Code is now the primary interface, and OpenClaw wraps around it** to provide the persistent infrastructure.
+But here's what everyone missed: **Claude Code CLI still works on Max.** It's Anthropic's own first-party interface. The subscription still covers it — no API metering, no third-party harness restrictions. And it's not just a coding tool — it's the best agentic AI interface available, period. VS Code, Claude Code Desktop, or the terminal.
 
-FlipClaw flips the architecture. **Claude Code CLI is now the primary interface.** OpenClaw wraps around it to provide persistent memory, scheduled automation, heartbeats, and 24/7 capabilities — but you're working fully inside Claude Code. VS Code, Claude Code Desktop, CLI terminal — wherever you prefer.
+The only catch? Claude Code has no memory. Every session starts from zero — no recall of your infrastructure, no awareness of past decisions, and no automations. It can't run cron jobs. It can't send heartbeats. It doesn't know what you did yesterday.
 
-**This is Claude Code first.** OpenClaw isn't the harness running Claude anymore. It's the infrastructure layer that gives Claude Code superpowers it doesn't have natively. Your conversations, your coding, your daily work — all happening in Claude Code on your Max subscription. OpenClaw provides the memory brain, the cron jobs, the skill library, and the remote access layer around it.
+## The Solution: Better Than What You Had Before
 
-What you get:
+FlipClaw flips the architecture. Instead of OpenClaw running Claude as its model (which now costs API rates), **Claude Code CLI becomes your primary interface** — that's where you work, talk, and build. OpenClaw becomes the infrastructure wrapper around it: persistent memory, cron jobs, heartbeats, skills, and 24/7 automation.
 
-- **Persistent memory** that survives across sessions — shared between Claude Code and your OpenClaw agent. Same brain, doesn't matter which interface you use.
-- **Auto-skill capture** — when you do something complex, the system automatically generates a reusable skill document so next time Claude already knows the procedure
-- **Dreaming** — nightly consolidation that deduplicates facts, promotes important knowledge, and detects patterns across your sessions
+**This is how you get Opus 4.6 back.** You're logging directly into Claude Code CLI with your Max subscription — no harness in between, no API billing. OpenClaw isn't running Claude anymore. It's the operating system behind Claude Code, giving it capabilities it doesn't have natively.
+
+And it turns out this architecture is genuinely better than what we had before — not a compromise, not a workaround. You get:
+
+**One unified system:**
+- **One memory** — shared between Claude Code and your OpenClaw agent. Same brain, doesn't matter which interface you use.
+- **One set of cron jobs and heartbeats** — still running in OpenClaw, now accessible from Claude Code.
+- **One operating infrastructure** — not two disconnected systems. Everything in one place.
+
+**Multiple access points — your choice:**
+- **Claude Code CLI** — terminal, VS Code, Claude Code Desktop app. All on your Max subscription.
+- **Your OpenClaw agent** — still there for quick tasks, emails, personal assistant work, or anything you've already built.
+- **Telegram from your phone** — multi-session Claude Code access via [claude-telegram-relay](https://github.com/bbesner/claude-telegram-relay). Not limited to Anthropic's single QR-code session.
+
+You choose who you talk to. Use Claude Code CLI for all the heavy lifting (that's what the author does — exclusively). Or split it: OpenClaw agent for lightweight personal assistant tasks, Claude Code for real work. Or use Claude Code for everything and let OpenClaw run silently as the infrastructure layer. It's up to you.
+
+**Capabilities that didn't exist before:**
+- **Auto-skill capture** — complex procedures you do once are automatically documented so your agent knows the playbook next time
+- **Dreaming** — nightly consolidation that deduplicates facts, promotes important knowledge, and detects patterns across your sessions. You wake up to a smarter agent.
 - **Memory Wiki** — a browsable, backlinked knowledge vault
-- **Cron jobs, heartbeats, and scheduled tasks** via OpenClaw, accessible from Claude Code
-- **Remote access via Telegram** — multi-session Claude Code from your phone, not limited to Anthropic's single QR-code session (pair with [claude-telegram-relay](https://github.com/bbesner/claude-telegram-relay))
-- **Flexible deployment** — Claude Code and OpenClaw on the same machine (local, server, or VPS) for the tightest integration, or split across two machines with the MCP server connection. Same shared memory either way.
-- **Self-service updates** — one-command updater with full snapshot backups, dry-run preview, post-update validation, and automatic rollback on failure. Stay current without re-running the installer.
+- **Flexible deployment** — same machine or split across two machines with the MCP server. Same shared memory either way.
+- **Self-service updates** — one-command updater with snapshot backups, dry-run preview, post-update validation, and automatic rollback on failure.
 
-All on your existing Claude Max subscription. No API charges.
+All on your existing Claude Max subscription. No API charges for your Claude usage.
 
 ## How It Works
 
