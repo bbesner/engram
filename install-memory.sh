@@ -64,6 +64,7 @@ WORKSPACE=""
 PORT=""
 DRY_RUN=false
 SKIP_OPENCLAW_CONFIG=false
+GROUP=""
 
 # Model defaults (configurable)
 CAPTURE_MODEL="gpt-5.4-nano"
@@ -101,6 +102,11 @@ usage() {
     echo "  --gemini-key KEY         Gemini API key (required for hybrid semantic search)"
     echo "                           Get a free key at https://aistudio.google.com/apikey"
     echo ""
+    echo "Multi-user options:"
+    echo "  --group GROUP            Set group ownership and setgid on workspace directories"
+    echo "                           Use when the gateway runs as a different user than the"
+    echo "                           workspace owner (e.g., ubuntu installing for e1/e2/e3)"
+    echo ""
     echo "Other options:"
     echo "  --skip-openclaw          Skip OpenClaw config changes"
     echo "  --dry-run                Show what would be done without making changes"
@@ -123,6 +129,7 @@ while [[ $# -gt 0 ]]; do
         --embedding-provider) EMBEDDING_PROVIDER="$2"; shift 2 ;;
         --embedding-model) EMBEDDING_MODEL="$2"; shift 2 ;;
         --gemini-key) GEMINI_KEY="$2"; shift 2 ;;
+        --group) GROUP="$2"; shift 2 ;;
         --skip-openclaw) SKIP_OPENCLAW_CONFIG=true; shift ;;
         --dry-run) DRY_RUN=true; shift ;;
         --help) usage ;;
@@ -501,6 +508,7 @@ DIRS=(
     "$WORKSPACE/memory"
     "$WORKSPACE/memory/session-cache"
     "$WORKSPACE/memory/dreaming"
+    "$WORKSPACE/memory/.dreams"
     "$WORKSPACE/wiki"
     "$WORKSPACE/skills"
     "$WORKSPACE/skills/.auto-skill-capture"
@@ -510,6 +518,8 @@ DIRS=(
     "$WORKSPACE/extensions/memory-bridge"
     "$WORKSPACE/extensions/auto-skill-capture/scripts"
     "$WORKSPACE/extensions/auto-skill-capture/config"
+    "$WORKSPACE/cron"
+    "$WORKSPACE/state"
     "$WORKSPACE/logs"
 )
 
@@ -523,6 +533,18 @@ for dir in "${DIRS[@]}"; do
         fi
     fi
 done
+
+# Apply group ownership and setgid if --group was specified
+if [ -n "$GROUP" ]; then
+    if [ "$DRY_RUN" = false ]; then
+        chgrp -R "$GROUP" "$WORKSPACE"
+        find "$WORKSPACE" -type d -exec chmod 2775 {} +
+        find "$WORKSPACE" -type f -exec chmod g+w {} +
+        echo "  Applied group ownership: $GROUP (setgid on directories, g+w on files)"
+    else
+        echo "  Would apply group ownership: $GROUP (setgid on directories, g+w on files)"
+    fi
+fi
 
 # ──────────────────────────────────────────────────────────────
 # Step 4: Install memory processing scripts

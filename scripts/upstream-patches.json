@@ -42,17 +42,35 @@
       "title": "wiki bridge listArtifacts returns empty even with indexed memory content",
       "broken_from": "2026.4.0",
       "fixed_in": "2026.4.10",
-      "verified_by": ["runtime-test-4.10"],
-      "verification_notes": "Source inspection showed the listArtifacts call chain is byte-identical between 4.9 and 4.10. Runtime test on a clean 4.10 container with 5 memory artifacts on disk confirmed the bridge discovers and imports all of them: 'Bridge: enabled (5 exported artifacts)'. The fix likely lives in config/agent-list resolution outside the direct listArtifacts path. Source inspection was a false negative — runtime verification caught the real behavior.",
+      "regressed_in": "2026.4.11",
+      "verified_by": ["runtime-test-4.10", "runtime-regression-confirmed-4.11"],
+      "verification_notes": "Source inspection showed the listArtifacts call chain is byte-identical between 4.9 and 4.10. Runtime test on a clean 4.10 container with 5 memory artifacts on disk confirmed the bridge discovers and imports all of them: 'Bridge: enabled (5 exported artifacts)'. The fix likely lives in config/agent-list resolution outside the direct listArtifacts path. Source inspection was a false negative — runtime verification caught the real behavior. REGRESSION: In 2026.4.11 listArtifacts() returns 0 artifacts again. The wiki bridge workaround is now re-activated with an automated daily ingest script.",
       "artifacts": {
-        "scripts": [],
-        "cron_jobs": []
+        "scripts": [
+          {
+            "path": "scripts/wiki-daily-ingest.sh",
+            "template_source": "scripts/wiki-daily-ingest.sh",
+            "template_vars": ["WORKSPACE"],
+            "executable": true
+          }
+        ],
+        "cron_jobs": [
+          {
+            "name": "Wiki Daily Ingest Workaround",
+            "description": "Workaround for OpenClaw wiki bridge listArtifacts() regression in 2026.4.11. Ingests daily logs, dreaming reports, and core memory into the wiki via openclaw wiki ingest since the bridge auto-population is broken.",
+            "cron": "30 5 * * *",
+            "tz": "America/New_York",
+            "session": "main",
+            "wake": "next-heartbeat",
+            "system_event_template": "Wiki daily ingest workaround. Run: exec {{WORKSPACE}}/scripts/wiki-daily-ingest.sh --workspace {{WORKSPACE}}"
+          }
+        ]
       },
       "runtime_probe": {
         "description": "Verify wiki bridge reports >0 exported artifacts with at least one memory file on disk",
         "command": "openclaw wiki status 2>/dev/null | grep -qE 'Bridge: enabled \\([1-9][0-9]* exported'",
         "expected_exit": 0,
-        "fallback_on_probe_failure": "warn_only"
+        "fallback_on_probe_failure": "apply_workaround_anyway"
       },
       "upstream_issue": null,
       "docs_ref": "docs/KNOWN-ISSUES.md#issue-2-wiki-bridge-import-returns-0-artifacts"

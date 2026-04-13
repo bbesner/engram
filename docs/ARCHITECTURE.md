@@ -439,9 +439,7 @@ Both Claude Code and the OpenClaw agent read from and write to the same filesyst
 
 ### Source Tagging
 
-Facts from Claude Code sessions are tagged `[src:claude-code]` so the agent (and humans) can identify their provenance. In multi-user setups, the tag includes the user ID: `[src:claude-code-employee1]`.
-
-OpenClaw native agent facts have no source tag (they are the default source).
+Facts from Claude Code sessions are tagged `[src:claude-code]` so the agent (and humans) can identify their provenance. OpenClaw native agent facts have no source tag (they are the default source).
 
 ---
 
@@ -1054,41 +1052,24 @@ The installed OpenClaw version is recorded in `.flipclaw-install.json` as `openc
 
 ---
 
-## Multi-User Support
+## Colocated Agents
 
-Multiple people can share one agent's memory system. Each user runs their own Claude Code CLI but contributes to and reads from the same knowledge base.
+FlipClaw supports running multiple independent single-tenant stacks on the same server. Each user gets their own OpenClaw agent, their own FlipClaw install, and their own Claude Code CLI. They share hardware but not memory.
 
 ### Setup
 
 ```bash
-bash install.sh \
-  --agent-name "MyAgent" \
-  --workspace /home/user/agent \
-  --port 3050 \
-  --user employee1 \
-  --shared
+# Each user/agent gets a separate install
+bash install-memory.sh --agent-name "E1Agent" --workspace /home/e1/agent --port 18794 --group agents
+bash install-claude-code.sh --agent-name "E1Agent" --workspace /home/e1/agent --port 18794 --user e1
 ```
 
 ### How It Works
 
-- The `--user` flag sets the session source to `claude-code-{user_id}` (e.g., `claude-code-employee1`)
-- Session transcripts are stored in `agents/claude-code-employee1/sessions/`
-- Extracted facts are tagged `[src:claude-code-employee1]`
-- The `--shared` flag sets up a Unix group (`{agent-name}-shared`) with group write permissions on the workspace
-- On Linux: uses `groupadd`/`usermod` and sets the setgid bit on key directories
-- On macOS: uses `dseditgroup` for group management
-
-Each user gets their own:
-- Session directory (`agents/claude-code-{user}/sessions/`)
-- Source tag on captured facts
-- Bridge state tracking
-
-All users share:
-- `MEMORY.md` and all memory files
-- Skills directory
-- Semantic search index
-- Dreaming consolidation
-- Memory Wiki
+- The `--user` flag resolves the target user's home directory for Claude Code config (`~e1/.claude`)
+- The `--group` flag on `install-memory.sh` sets group ownership and the setgid bit, allowing the gateway process (running as a different user) to write to the workspace
+- Each agent has its own `MEMORY.md`, dreaming pipeline, wiki, skills, and session directories
+- There is no shared memory pool — agents are fully independent
 
 ---
 

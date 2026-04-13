@@ -7,6 +7,27 @@ Versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
 
+## [3.2.5] — 2026-04-13
+
+### Added
+
+- **`install-memory.sh`** — New `--group GROUP` flag for multi-user installs. When specified, the installer applies `chgrp -R`, setgid (`chmod 2775`) on directories, and group-write on files after directory creation. This allows gateway processes running as a different user (e.g., `ubuntu` running gateways for `e1/e2/e3` employee accounts) to write to workspace directories without EACCES errors.
+- **`install-memory.sh`** — Added `cron/`, `state/`, and `memory/.dreams/` to the directory creation list. OpenClaw's `memory-core` and `acpx` plugins expect these at runtime; creating them during install prevents EACCES failures in multi-user setups where the gateway user lacks permission to mkdir in the workspace root.
+- **`scripts/wiki-daily-ingest.sh`** — New workaround script for OpenClaw wiki bridge Known Issue #2 (regressed in 2026.4.11). Ingests daily logs, dreaming reports, and MEMORY.md into the wiki vault via `openclaw wiki ingest`. Intended to run daily after dreaming completes (e.g., 5:30 AM ET cron). Idempotent; logs to `$WORKSPACE/logs/wiki-daily-ingest.log`.
+
+### Removed
+
+- **`install-claude-code.sh`** — Removed `--shared` flag and shared workspace mode (Step 6). The multi-tenant architecture (multiple Claude Code users sharing one agent's memory pool) is not a supported pattern. Each user should have their own agent instance. The `--user` flag is retained for colocated single-tenant installs (e.g., ubuntu installing hooks for e1/e2/e3 employee accounts that each have their own agent).
+- **`README.md`** — Replaced "Multi-User Support (Experimental)" section with "Colocated Agents" documenting the actual supported pattern: multiple independent single-tenant stacks sharing hardware.
+- **`docs/ARCHITECTURE.md`** — Replaced "Multi-User Support" section with "Colocated Agents." Removed reference to per-user source tagging (`[src:claude-code-employee1]`) which was never implemented at the runtime level.
+
+### Fixed
+
+- **`docs/KNOWN-ISSUES.md`** — Issue #2 (wiki bridge `listArtifacts` returns 0) updated to note regression in OpenClaw 2026.4.11. Previously marked as fixed in 4.10; the fix did not hold across versions. Automated workaround via `wiki-daily-ingest.sh` now documented.
+- **`scripts/upstream-patches.json`** — Wiki bridge patch entry updated with `regressed_in: "2026.4.11"`, regression verification note, and `wiki-daily-ingest.sh` artifact.
+
+---
+
 ## [3.2.4] — 2026-04-13
 
 ### Fixed
@@ -352,6 +373,6 @@ After this, future updates can use `flipclaw-update.sh` directly with full rollb
 - Claude Code integration: SessionEnd hook, bridge, sweep, turn capture, health check
 - Combined installer (`install.sh`) with separate `install-memory.sh` and `install-claude-code.sh`
 - MCP server for remote Claude Code access
-- Multi-user shared workspace support (Linux + macOS)
+- Colocated agent support (`--user` flag for installing across Linux accounts)
 - Semantic search via Gemini hybrid search (70% vector + 30% keyword)
 - `continuation-skip` context injection for token savings

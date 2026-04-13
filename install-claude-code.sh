@@ -4,15 +4,14 @@
 # Version: 3.2.0 (2026-04-10)
 #
 # Installs the memory integration pipeline that connects Claude Code CLI
-# to an OpenClaw agent's memory system. Supports three deployment modes:
+# to an OpenClaw agent's memory system. Supports two deployment modes:
 #
 #   1. Single user + existing OpenClaw agent
-#   2. New deployment from scratch (fresh server)
-#   3. Shared agent + multiple Claude Code users
+#   2. Colocated agents (e.g., ubuntu installing hooks for e1/e2/e3 accounts)
 #
 # Usage:
 #   bash install-claude-code.sh --agent-name "MyAgent" --workspace /home/user/agent --port 3050
-#   bash install-claude-code.sh --agent-name "TeamBot" --workspace /path --port 3050 --user employee1 --shared
+#   bash install-claude-code.sh --agent-name "E1Agent" --workspace /home/e1/agent --port 18794 --user e1
 #   bash install.sh --check   # Verify existing installation
 #
 # ============================================================================
@@ -55,7 +54,6 @@ AGENT_NAME=""
 WORKSPACE=""
 PORT=""
 USER_ID=""
-SHARED=false
 CHECK_ONLY=false
 CLAUDE_HOME=""
 DRY_RUN=false
@@ -71,8 +69,8 @@ usage() {
     echo "  --port PORT          OpenClaw gateway port number"
     echo ""
     echo "Optional:"
-    echo "  --user ID            User identifier for multi-user setups (e.g., employee1)"
-    echo "  --shared             Shared workspace mode (multiple Claude Code users)"
+    echo "  --user ID            Target user for colocated agent installs (e.g., e1)"
+    echo "                       Resolves the user's home dir for Claude Code config"
     echo "  --claude-home PATH   Override Claude Code config dir (default: ~/.claude)"
     echo "  --with-mcp           Install MCP server for remote Claude Code access"
     echo "  --skip-openclaw      Skip OpenClaw config changes (for existing agents)"
@@ -89,7 +87,6 @@ while [[ $# -gt 0 ]]; do
         --workspace) WORKSPACE="$2"; shift 2 ;;
         --port) PORT="$2"; shift 2 ;;
         --user) USER_ID="$2"; shift 2 ;;
-        --shared) SHARED=true; shift ;;
         --claude-home) CLAUDE_HOME="$2"; shift 2 ;;
         --with-mcp) WITH_MCP=true; shift ;;
         --skip-openclaw) SKIP_OPENCLAW_CONFIG=true; shift ;;
@@ -201,9 +198,8 @@ echo ""
 echo "  Agent name:     $AGENT_NAME"
 echo "  Workspace:      $WORKSPACE"
 echo "  Gateway port:   $PORT"
-echo "  User ID:        ${USER_ID:-"(default — single user)"}"
+echo "  User ID:        ${USER_ID:-"(default — same user)"}"
 echo "  Session source: $SESSION_SOURCE"
-echo "  Shared mode:    $SHARED"
 echo "  Claude home:    $CLAUDE_HOME"
 echo ""
 
@@ -527,57 +523,7 @@ PYEOF
 fi
 
 # ──────────────────────────────────────────────────────────────
-# Step 6: Shared mode setup (if applicable)
-# ──────────────────────────────────────────────────────────────
-
-if [ "$SHARED" = true ]; then
-    echo ""
-    echo -e "${BLUE}Step 6: Shared mode permissions${NC}"
-
-    if [ "$DRY_RUN" = false ]; then
-        SHARED_GROUP="${AGENT_NAME,,}-shared"
-
-        if [ "$IS_MACOS" = true ]; then
-            # macOS: use dseditgroup for group management
-            if ! dscl . -read /Groups/"$SHARED_GROUP" > /dev/null 2>&1; then
-                sudo dseditgroup -o create "$SHARED_GROUP" 2>/dev/null && echo "  Created group: $SHARED_GROUP" || echo "  Could not create group (may need sudo)"
-            else
-                echo "  Group exists: $SHARED_GROUP"
-            fi
-
-            sudo chgrp -R "$SHARED_GROUP" "$WORKSPACE" 2>/dev/null
-            sudo chmod -R g+rwX "$WORKSPACE" 2>/dev/null
-            echo "  Set group permissions on workspace"
-            echo ""
-            echo -e "  ${YELLOW}IMPORTANT: Add each user to the group:${NC}"
-            echo "    sudo dseditgroup -o edit -a employee1 -t user $SHARED_GROUP"
-            echo "    sudo dseditgroup -o edit -a employee2 -t user $SHARED_GROUP"
-            echo "    sudo dseditgroup -o edit -a employee3 -t user $SHARED_GROUP"
-        else
-            # Linux: use groupadd/usermod
-            if ! getent group "$SHARED_GROUP" > /dev/null 2>&1; then
-                sudo groupadd "$SHARED_GROUP" 2>/dev/null && echo "  Created group: $SHARED_GROUP" || echo "  Could not create group (may need sudo)"
-            else
-                echo "  Group exists: $SHARED_GROUP"
-            fi
-
-            sudo chgrp -R "$SHARED_GROUP" "$WORKSPACE" 2>/dev/null
-            sudo chmod -R g+rwX "$WORKSPACE" 2>/dev/null
-            sudo chmod g+s "$WORKSPACE" "$WORKSPACE/memory" "$WORKSPACE/skills" "$WORKSPACE/agents" "$WORKSPACE/logs" 2>/dev/null
-            echo "  Set group permissions on workspace"
-            echo ""
-            echo -e "  ${YELLOW}IMPORTANT: Add each user to the group:${NC}"
-            echo "    sudo usermod -aG $SHARED_GROUP employee1"
-            echo "    sudo usermod -aG $SHARED_GROUP employee2"
-            echo "    sudo usermod -aG $SHARED_GROUP employee3"
-        fi
-    else
-        echo "  Would set up shared group permissions"
-    fi
-fi
-
-# ──────────────────────────────────────────────────────────────
-# Step 6b: MCP Server (if --with-mcp)
+# Step 6: MCP Server (if --with-mcp)
 # ──────────────────────────────────────────────────────────────
 
 if [ "$WITH_MCP" = true ]; then
@@ -701,7 +647,6 @@ p['port'] = '$PORT'
 p['claude_home'] = '$CLAUDE_HOME'
 p['user_id'] = '$USER_ID'
 p['session_source'] = '$SESSION_SOURCE'
-p['shared'] = $( [ "$SHARED" = true ] && echo "True" || echo "False" )
 p['with_mcp'] = $( [ "$WITH_MCP" = true ] && echo "True" || echo "False" )
 p['flipclaw_version'] = '$TOOLKIT_VERSION'
 p['openclaw_version'] = '$OPENCLAW_VERSION'

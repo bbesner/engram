@@ -56,8 +56,9 @@ openclaw cron list | grep -i dreaming   # should show the Memory Dreaming Promot
 
 ## Issue 2: Wiki bridge import returns 0 artifacts
 
-**Affected versions:** OpenClaw 2026.4.0 – 2026.4.9
+**Affected versions:** OpenClaw 2026.4.0 – 2026.4.9, **regressed in 2026.4.11**
 **Fixed in:** OpenClaw **2026.4.10** (verified by runtime test — source inspection was a false negative, see `scripts/upstream-patches.json` verification notes)
+**Regressed in:** OpenClaw **2026.4.11** -- `listArtifacts()` returns 0 artifacts again despite the 4.10 fix
 **Registry id:** `wiki-bridge-zero-artifacts`
 
 **Symptom:**
@@ -74,25 +75,37 @@ The wiki plugin's bridge mode calls `publicArtifacts.listArtifacts()` on the act
 
 The bridge mechanism expects the memory plugin to export artifacts via a public export API, but memory-core isn't populating that export correctly at runtime.
 
-**FlipClaw workaround (manual):**
+**Regression in 2026.4.11:** The fix shipped in 2026.4.10 did not survive the 2026.4.11 release. `listArtifacts()` returns 0 artifacts again on 4.11, with identical symptoms to the original bug. The root cause of the regression has not been identified -- it may be a revert of the 4.10 config/agent-list resolution change or a new code path that bypasses it.
 
-Use `openclaw wiki ingest` to pull specific files into the wiki manually:
+**FlipClaw workaround (automatic, v3.2.2+):**
+
+FlipClaw now ships an automated daily ingest script as a workaround:
+
+1. **`scripts/wiki-daily-ingest.sh`** -- A standalone shell script that:
+   - Accepts `--workspace` flag, `$WORKSPACE` env var, or defaults to current directory
+   - Ingests today's and yesterday's daily logs (`memory/YYYY-MM-DD.md`)
+   - Ingests today's and yesterday's dreaming reports (light, REM, deep)
+   - Ingests core memory (`MEMORY.md`)
+   - Logs to `$WORKSPACE/logs/wiki-daily-ingest.log`
+   - Is fully idempotent -- re-ingesting updates the wiki page in place
+
+2. **"Wiki Daily Ingest Workaround" OpenClaw cron job** -- Registered during install, runs daily at 5:30 AM ET (after dreaming completes at ~4 AM ET). It runs `wiki-daily-ingest.sh` to keep the wiki populated despite the broken bridge.
+
+**Manual usage:**
 ```bash
-openclaw wiki ingest $WORKSPACE/memory/decisions.md
-openclaw wiki ingest $WORKSPACE/memory/infrastructure.md
-openclaw wiki ingest $WORKSPACE/memory/people.md
-openclaw wiki ingest $WORKSPACE/memory/lessons-learned.md
-openclaw wiki ingest $WORKSPACE/memory/business-context.md
+# Run the ingest manually
+bash $WORKSPACE/scripts/wiki-daily-ingest.sh --workspace $WORKSPACE
+
+# Or for a one-off specific file
+cd $WORKSPACE && OPENCLAW_CONFIG_PATH=$WORKSPACE/openclaw.json openclaw wiki ingest $WORKSPACE/memory/decisions.md --title "Decisions"
 ```
 
-You can script this to ingest all `.md` files under `memory/`:
+You can also ingest all `.md` files under `memory/` in one pass:
 ```bash
 find $WORKSPACE/memory -maxdepth 1 -name '*.md' -exec openclaw wiki ingest {} \;
 ```
 
-**Status of FlipClaw automating this:** Not yet. If you want the wiki to be populated on every install, add a post-install step to your workflow that runs the ingest loop above. A future FlipClaw version may add this as an optional installer step, but we don't want to quietly ingest everything by default until we understand whether the upstream bug will be fixed.
-
-**Upstream status:** Not yet reported. Planning to file with reproduction steps.
+**Upstream status:** Not yet reported. The regression in 4.11 makes this higher priority to file -- the fix was clearly fragile.
 
 ---
 
@@ -237,7 +250,7 @@ Starting in v3.2.2, FlipClaw manages version-conditional workarounds via a decla
 | Issue | Fixed in OpenClaw | FlipClaw Action (≤ 2026.4.9) | FlipClaw Action (≥ 2026.4.10) | User Action |
 |-------|---|---|---|-------------|
 | 1. Dreaming cron reconciler bug | **2026.4.10** | Installs `ensure-dreaming-cron.sh` + daily heal cron via patch registry | Removes heal script + cron automatically on next update | None — automatic reconciliation |
-| 2. Wiki bridge import returns 0 | **2026.4.10** | Manual `openclaw wiki ingest` (no auto-workaround) | Nothing to remove — just upgrade and it works | Upgrade OpenClaw |
+| 2. Wiki bridge import returns 0 | **2026.4.10** (regressed in **2026.4.11**) | Installs `wiki-daily-ingest.sh` + daily ingest cron via patch registry | Removes ingest script + cron if upstream fix confirmed | None -- automatic daily ingest |
 | 3. Legacy `auth.profiles.*.primary` | Not fixed upstream | Auto-sanitizes during install | Auto-sanitizes during install | None |
 | 4. openclaw-mem0 auto-discovery | Not fixed upstream | Moves directory aside + removes from config | Moves directory aside + removes from config | None |
 | 5. Two-config resolution | Not a bug — working-as-designed | Syncs plugin config to both files | Syncs plugin config to both files | Set `OPENCLAW_CONFIG_PATH` in start scripts (recommended) |
@@ -246,7 +259,7 @@ Starting in v3.2.2, FlipClaw manages version-conditional workarounds via a decla
 
 ## Reporting these upstream
 
-The two major bugs (Issues #1 and #2) have been **fixed in OpenClaw 2026.4.10** and verified by source inspection and runtime test. Thanks to whoever upstream fixed them. If you maintain OpenClaw, these remaining issues would benefit from being addressed:
+Issue #1 was **fixed in OpenClaw 2026.4.10** and verified by source inspection and runtime test. Issue #2 was also fixed in 2026.4.10 but **regressed in 2026.4.11** -- FlipClaw now ships an automated workaround (`wiki-daily-ingest.sh`). If you maintain OpenClaw, these issues would benefit from being addressed:
 
 1. **Issue #3** is a minor inconvenience that should be handled by `openclaw doctor --fix`
 2. **Issue #4** is a usability issue — plugin auto-discovery should respect `plugins.entries.<name>.enabled: false`

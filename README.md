@@ -457,36 +457,29 @@ The system watches completed sessions and automatically generates reusable skill
 
 Both interfaces contribute to and retrieve from the same memory. Facts from Claude Code sessions are tagged `[src:claude-code]` for provenance.
 
-## Multi-User Support (Experimental)
+## Colocated Agents (Multiple Users, One Server)
 
-> ⚠️ **Experimental — partially implemented in v3.2.1.** The installer scaffolds per-user session directories, Unix group permissions, and separate Claude Code home directories for each team member. **However, the runtime capture scripts currently write all sessions to `agents/claude-code/sessions/` regardless of which user ran them**, so per-user session isolation and source tagging (`[src:claude-code-employee1]`) are not yet working as documented. Full multi-tenant support is planned for **v3.3.0**. For now, multi-user mode is safe to install but behaves identically to single-user mode at the session-capture level.
+FlipClaw supports installing separate single-tenant stacks for multiple users on the same server. Each user gets their own OpenClaw agent, their own FlipClaw installation, and their own Claude Code CLI — they just share hardware.
 
-The intended model: one OpenClaw agent serves multiple team members, each with their own Claude Code CLI on the same server. Three employees could each run `claude` from their own Linux account and contribute to the same shared knowledge base.
+This is **not** multi-tenant. Each agent has its own memory, dreaming pipeline, wiki, and skills. There is no shared memory pool.
 
 ```bash
-bash install.sh \
-  --agent-name "TeamAgent" \
-  --workspace /home/user/agent \
-  --port 3050 \
-  --user employee1 \
-  --shared \
-  --claude-home /home/employee1/.claude
+# Install Claude Code hooks for employee e1 (who has their own agent at /home/e1/agent)
+bash install-claude-code.sh \
+  --agent-name "E1Agent" \
+  --workspace /home/e1/agent \
+  --port 18794 \
+  --user e1
 
-# Repeat for each employee with their own --user and --claude-home
+# Use --group in install-memory.sh if the gateway runs as a different user
+bash install-memory.sh \
+  --agent-name "E1Agent" \
+  --workspace /home/e1/agent \
+  --port 18794 \
+  --group agents
 ```
 
-**What currently works:**
-- Shared workspace with Unix group permissions (`--shared`)
-- Separate Claude Code config directories per Linux user (`--claude-home`)
-- Per-user session directory creation under `agents/claude-code-<user>/`
-- Shared access to the same memory, skills, and wiki
-
-**What's not yet wired up:**
-- Runtime isolation of sessions by user (all sessions currently go into `agents/claude-code/sessions/`)
-- Per-user source tagging on extracted facts (all facts tagged `[src:claude-code]`)
-- Per-user session sweep directory scanning
-
-Track v3.3.0 for full multi-tenant support.
+The `--user` flag resolves the target user's home directory for Claude Code config (`~e1/.claude`). The `--group` flag on `install-memory.sh` sets group ownership and setgid so the gateway process can write to the workspace.
 
 ## Remote Access (MCP Server)
 
