@@ -100,8 +100,18 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 
-# Set defaults
-CLAUDE_HOME="${CLAUDE_HOME:-$HOME/.claude}"
+# Set defaults — when installing for a different user, derive their home directory
+if [ -z "$CLAUDE_HOME" ] && [ -n "$USER_ID" ]; then
+    USER_HOME_DIR=$(getent passwd "$USER_ID" 2>/dev/null | cut -d: -f6)
+    if [ -n "$USER_HOME_DIR" ]; then
+        CLAUDE_HOME="${USER_HOME_DIR}/.claude"
+    else
+        CLAUDE_HOME="$HOME/.claude"
+        echo -e "${YELLOW}Warning: could not resolve home for user '$USER_ID', using $CLAUDE_HOME${NC}"
+    fi
+else
+    CLAUDE_HOME="${CLAUDE_HOME:-$HOME/.claude}"
+fi
 if [ -n "$USER_ID" ]; then
     SESSION_SOURCE="claude-code-${USER_ID}"
 else

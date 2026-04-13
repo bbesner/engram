@@ -1,6 +1,6 @@
 # FlipClaw Architecture Reference
 
-**Version:** 3.2.3 | **Last updated:** 2026-04-11
+**Version:** 3.2.4 | **Last updated:** 2026-04-13
 
 This document is a comprehensive technical deep-dive into FlipClaw's internals. It covers every layer of the memory system, every pipeline stage, every configuration surface, and the update/backup lifecycle. Read this if you want to understand exactly how FlipClaw works before adopting it.
 
@@ -847,7 +847,7 @@ Written by the installer at install time, this file is the single source of trut
 
 ```json
 {
-  "flipclaw_version": "3.2.3",
+  "flipclaw_version": "3.2.4",
   "openclaw_version": "2026.4.10",
   "installed_at": "2026-04-11",
   "workspace": "/home/user/agent",

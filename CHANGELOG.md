@@ -7,6 +7,14 @@ Versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
 
+## [3.2.4] — 2026-04-13
+
+### Fixed
+
+- **`install-claude-code.sh`** — When `--user` is provided without `--claude-home`, the installer now resolves the target user's home directory via `getent passwd` instead of defaulting to `$HOME/.claude` (which is the *installing* user's home, not the target user's). This caused `claude-code-sweep.py`, `claude-code-turn-capture.py`, and `claude-code-update-check.sh` to have the wrong `CLAUDE_HOME` baked in, breaking crash-recovery session scanning and health checks for multi-user installs where the installer runs as a different user (e.g., root or ubuntu installing for employee accounts).
+
+---
+
 ## [3.2.3] — 2026-04-11
 
 Documentation and branding pass. All prose was swept for stale version references and outdated upstream-bug framing after the v3.2.2 patch registry landed; extensions and the MCP server now self-identify as FlipClaw components so users can tell what FlipClaw adds versus what's stock OpenClaw.
