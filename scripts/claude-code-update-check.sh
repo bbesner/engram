@@ -42,38 +42,56 @@ echo "   Version: $CC_VERSION"
 echo ""
 
 # 2. Check SessionEnd hook
-# v3.2.1 Bug #10 fix: handle both flat and nested hook structures.
-# Claude Code supports two formats:
-#   Flat:   { "SessionEnd": [ { "type": "command", "command": "..." } ] }
-#   Nested: { "SessionEnd": [ { "hooks": [ { "type": "command", "command": "..." } ] } ] }
-# The previous check only looked at se[0].command and missed the nested form.
+# Claude Code's hook schema requires the nested matcher form:
+#   Nested (required):   { "SessionEnd": [ { "matcher": "", "hooks": [ { "type": "command", "command": "..." } ] } ] }
+#   Flat (deprecated):   { "SessionEnd": [ { "type": "command", "command": "..." } ] }
+#
+# The flat form was accepted by older Claude Code versions but is now rejected
+# on session start with "hooks: Expected array, but received undefined".
+# We report FAIL for the flat shape so operators migrate before next launch.
 echo "2. SessionEnd Hook"
 SETTINGS="$CLAUDE_HOME/settings.json"
 if [ -f "$SETTINGS" ]; then
-    HOOK=$(python3 -c "
+    HOOK_INFO=$(python3 -c "
 import json
 d = json.load(open('$SETTINGS'))
 hooks = d.get('hooks', {})
 se = hooks.get('SessionEnd', [])
 if not se:
-    print('NOT CONFIGURED')
+    print('NOT_CONFIGURED||')
+elif not isinstance(se[0], dict):
+    print('MALFORMED||')
+elif 'hooks' in se[0]:
+    # Nested form (current schema)
+    nested = se[0].get('hooks', [])
+    cmd = nested[0].get('command', '') if nested and isinstance(nested[0], dict) else ''
+    print(f'NESTED||{cmd}')
+elif 'command' in se[0]:
+    # Flat form (deprecated — Claude Code now rejects this on load)
+    print(f'FLAT||{se[0].get(\"command\", \"\")}')
 else:
-    # Try flat form first (direct command)
-    cmd = se[0].get('command', '') if isinstance(se[0], dict) else ''
-    # Then try nested form (hooks array inside a matcher entry)
-    if not cmd and isinstance(se[0], dict) and 'hooks' in se[0]:
-        nested = se[0].get('hooks', [])
-        if nested and isinstance(nested[0], dict):
-            cmd = nested[0].get('command', '')
-    print(cmd or 'NO COMMAND')
+    print('MALFORMED||')
 " 2>/dev/null)
-    if [[ "$HOOK" == *"claude-code-bridge.py"* ]]; then
-        check "SessionEnd hook configured" "pass" ""
-    elif [[ "$HOOK" == "NOT CONFIGURED" ]]; then
-        check "SessionEnd hook" "fail" "Hook missing from settings.json"
-    else
-        check "SessionEnd hook" "warn" "Hook exists but points to: $HOOK"
-    fi
+    SHAPE="${HOOK_INFO%%||*}"
+    HOOK="${HOOK_INFO#*||}"
+    case "$SHAPE" in
+        NESTED)
+            if [[ "$HOOK" == *"claude-code-bridge.py"* ]]; then
+                check "SessionEnd hook configured (nested schema)" "pass" ""
+            else
+                check "SessionEnd hook" "warn" "Nested schema but points to: $HOOK"
+            fi
+            ;;
+        FLAT)
+            check "SessionEnd hook schema" "fail" "Deprecated flat form — Claude Code will reject this on next launch. Migrate to nested schema: { \"SessionEnd\": [ { \"matcher\": \"\", \"hooks\": [ { \"type\": \"command\", \"command\": \"...\" } ] } ] }"
+            ;;
+        NOT_CONFIGURED)
+            check "SessionEnd hook" "fail" "Hook missing from settings.json"
+            ;;
+        *)
+            check "SessionEnd hook" "fail" "settings.json hook entry is malformed or unreadable"
+            ;;
+    esac
 else
     check "settings.json exists" "fail" "File not found at $SETTINGS"
 fi

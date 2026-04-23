@@ -7,6 +7,14 @@ Versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
 
+## [Unreleased]
+
+### Fixed
+
+- **`scripts/claude-code-update-check.sh`** — Tightened SessionEnd hook validation to FAIL (not PASS) when the deprecated flat schema is detected. Recent Claude Code versions reject the flat form on session start with `hooks: Expected array, but received undefined`, but the previous check accepted both shapes and reported PASS. The check now explicitly identifies the schema shape (`NESTED`, `FLAT`, `NOT_CONFIGURED`, `MALFORMED`) and tells operators how to migrate. Caught on Ultra when e1's first Claude Code launch failed post-CLI-update — `install-claude-code.sh` already emits the nested form, so only pre-existing installs are affected.
+
+---
+
 ## [3.2.5] — 2026-04-13
 
 ### Added
