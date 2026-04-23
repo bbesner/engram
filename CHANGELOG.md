@@ -9,8 +9,13 @@ Versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+---
+
+## [3.2.6] — 2026-04-23
+
 ### Fixed
 
+- **`install-memory.sh`** — Changed the default `dreaming.storage.mode` written into new installs from the legacy `"both"` (with `separateReports: true`) to `"separate"`. OpenClaw 2026.4.15 documented only `inline` and `separate` as valid modes and changed the default from `inline` to `separate`, with dream phase blocks (`## Light Sleep`, `## REM Sleep`) now landing in `memory/dreaming/{phase}/YYYY-MM-DD.md` instead of the daily `memory/YYYY-MM-DD.md` file. The `"both"` value was an Ari-legacy pattern whose behavior is no longer part of the supported surface. Existing installs that wrote `"both"` should be migrated to `"separate"` before upgrading past 2026.4.14 — the wiki bridge (`wiki-daily-ingest.sh`) already reads from `memory/dreaming/{phase}/` so consumption is unchanged. **Requires OpenClaw ≥ 2026.4.15.**
 - **`scripts/claude-code-update-check.sh`** — Tightened SessionEnd hook validation to FAIL (not PASS) when the deprecated flat schema is detected. Recent Claude Code versions reject the flat form on session start with `hooks: Expected array, but received undefined`, but the previous check accepted both shapes and reported PASS. The check now explicitly identifies the schema shape (`NESTED`, `FLAT`, `NOT_CONFIGURED`, `MALFORMED`) and tells operators how to migrate. Caught on Ultra when e1's first Claude Code launch failed post-CLI-update — `install-claude-code.sh` already emits the nested form, so only pre-existing installs are affected.
 
 ---
