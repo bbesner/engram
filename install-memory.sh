@@ -687,7 +687,7 @@ def dreaming_config():
         'frequency': '0 4 * * *',
         'timezone': 'America/New_York',
         'verboseLogging': True,
-        'storage': {'mode': 'both', 'separateReports': True},
+        'storage': {'mode': 'separate'},
         'phases': {
             'light': {
                 'enabled': True,
