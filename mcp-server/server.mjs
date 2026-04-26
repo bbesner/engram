@@ -5,8 +5,9 @@
  * Exposes an OpenClaw agent's shared memory system (MEMORY.md, memory/*,
  * skills/) as MCP tools for a remote Claude Code CLI. Ships as part of
  * FlipClaw — installed by install-claude-code.sh when --with-mcp is set,
- * configured in Claude Code's settings.json under `mcpServers`, and runs
- * as a stdio MCP server (spawned on demand by Claude Code).
+ * registered with Claude Code via `claude mcp add --scope user` (writes
+ * to ~/.claude.json), and runs as a stdio MCP server (spawned on demand
+ * by Claude Code).
  *
  * Read Tools:
  *   memory_search      — Semantic search via openclaw memory search

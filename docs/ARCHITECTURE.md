@@ -1080,7 +1080,7 @@ The optional MCP (Model Context Protocol) server exposes the memory system as to
 ### Architecture
 
 - Runs as a stdio MCP server (Node.js, `@modelcontextprotocol/sdk`)
-- Configured in Claude Code's `settings.json` under `mcpServers`
+- Registered with Claude Code via `claude mcp add --scope user` — writes to `~/.claude.json`. (Earlier toolkit versions wrote to `~/.claude/settings.json`'s `mcpServers` block, which current Claude Code releases no longer read; `install-claude-code.sh` now cleans up that stale entry on each run.)
 - Security-scoped: only `memory/`, `skills/`, and `MEMORY.md` are accessible
 - Search results are cached in-memory with a 5-minute TTL (max 50 entries)
 

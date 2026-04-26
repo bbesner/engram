@@ -545,24 +545,50 @@ if [ "$WITH_MCP" = true ]; then
         cd "$MCP_DIR" && npm install --silent 2>/dev/null && cd - > /dev/null
         echo "  Dependencies installed"
 
-        # Add MCP server config to Claude Code settings
+        # Register MCP server with Claude Code. Current Claude Code
+        # releases discover MCP servers from ~/.claude.json (the file
+        # `claude mcp add` manages); earlier toolkit versions wrote to
+        # ~/.claude/settings.json's mcpServers block, which is no
+        # longer read. We use the official CLI here and clean up any
+        # stale entry left behind by a previous install.
+        SERVER_NAME="${AGENT_NAME,,}-memory"
+
         python3 -c "
-import json
-with open('$SETTINGS_FILE') as f:
-    d = json.load(f)
-mcp = d.setdefault('mcpServers', {})
-mcp['${AGENT_NAME,,}-memory'] = {
-    'command': 'node',
-    'args': ['$MCP_DIR/server.mjs'],
-    'env': {
-        'OPENCLAW_WORKSPACE': '$WORKSPACE',
-        'OPENCLAW_CONFIG_PATH': '$WORKSPACE/openclaw.json'
-    }
-}
-with open('$SETTINGS_FILE', 'w') as f:
-    json.dump(d, f, indent=2)
-print('  Added MCP server to Claude Code settings')
+import json, sys
+from pathlib import Path
+p = Path('$SETTINGS_FILE')
+if not p.exists():
+    sys.exit(0)
+try:
+    d = json.loads(p.read_text())
+except Exception:
+    sys.exit(0)
+servers = d.get('mcpServers')
+if isinstance(servers, dict) and '$SERVER_NAME' in servers:
+    del servers['$SERVER_NAME']
+    if not servers:
+        del d['mcpServers']
+    p.write_text(json.dumps(d, indent=2) + chr(10))
+    print('  Cleaned legacy mcpServers.$SERVER_NAME entry from settings.json')
 "
+
+        if command -v claude >/dev/null 2>&1; then
+            # Idempotent: remove existing registration (ignore errors)
+            # then add the current one.
+            claude mcp remove --scope user "$SERVER_NAME" >/dev/null 2>&1 || true
+            claude mcp add --scope user "$SERVER_NAME" \
+                -e "OPENCLAW_WORKSPACE=$WORKSPACE" \
+                -e "OPENCLAW_CONFIG_PATH=$WORKSPACE/openclaw.json" \
+                -- node "$MCP_DIR/server.mjs"
+            echo "  Registered MCP server '$SERVER_NAME' (user scope)"
+        else
+            echo -e "  ${YELLOW}claude CLI not found on PATH — skipping MCP registration${NC}"
+            echo "  After installing Claude Code, run:"
+            echo "    claude mcp add --scope user $SERVER_NAME \\"
+            echo "      -e OPENCLAW_WORKSPACE=$WORKSPACE \\"
+            echo "      -e OPENCLAW_CONFIG_PATH=$WORKSPACE/openclaw.json \\"
+            echo "      -- node $MCP_DIR/server.mjs"
+        fi
         echo ""
         echo -e "  ${GREEN}MCP server installed!${NC}"
         echo "  Claude Code will automatically start it when you use memory tools."

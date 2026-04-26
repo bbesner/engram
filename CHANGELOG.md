@@ -11,6 +11,16 @@ Versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
 
+## [3.2.7] — 2026-04-26
+
+### Fixed
+
+- **`install-claude-code.sh`** — MCP server registration moved from `~/.claude/settings.json` (which current Claude Code releases no longer read for MCP discovery) to `~/.claude.json` via the official `claude mcp add --scope user` CLI. Previously, the script wrote the agent's `${name}-memory` entry into the legacy `mcpServers` block in `settings.json`; Claude Code has since migrated MCP server discovery to `~/.claude.json` (the file `claude mcp add` manages), so the legacy entry was inert and the FlipClaw MCP server was silently absent from sessions. Same root cause and fix as Memstem PR #30. The script now (1) cleans up any stale `mcpServers.${name}-memory` entry from the legacy settings.json on each run, and (2) registers via `claude mcp add` with the agent's `OPENCLAW_WORKSPACE` / `OPENCLAW_CONFIG_PATH` env vars passed via `-e`. Falls back to printing the manual command if the `claude` CLI is not on PATH at install time.
+- **`mcp-server/server.mjs`** — Updated module header comment to describe registration via `claude mcp add` rather than direct settings.json editing.
+- **`docs/ARCHITECTURE.md`** — Updated MCP Server section to document the new registration path and the legacy-cleanup behavior.
+
+---
+
 ## [3.2.6] — 2026-04-23
 
 ### Fixed
