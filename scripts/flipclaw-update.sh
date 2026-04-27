@@ -69,6 +69,13 @@ HELPEOF
     esac
 done
 
+# Wrap the imperative body in main() so bash parses the entire script
+# into memory before execution. This eliminates a self-modify race during
+# Step 4: when this script overwrites itself with the new version, bash's
+# stream-reader would otherwise pick up new content at the old offset and
+# hit a syntax error mid-run. With main(), all parsing finishes up front.
+main() {
+
 echo "========================================"
 echo -e "${BLUE}FlipClaw Updater${NC}"
 echo "$(date '+%Y-%m-%d %H:%M %Z')"
@@ -916,3 +923,7 @@ else
     echo "  $BACKUP_DIR"
 fi
 echo "========================================"
+
+}
+
+main "$@"

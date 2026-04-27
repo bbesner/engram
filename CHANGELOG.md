@@ -11,6 +11,26 @@ Versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
 
+## [3.2.8] — 2026-04-27
+
+### Fixed
+
+- **`scripts/flipclaw-update.sh`** — Wrapped the imperative body in `main() { … } main "$@"` to eliminate a self-modify race. The updater overwrites itself in Step 4 (`apply_script "$TOOLKIT_DIR/scripts/flipclaw-update.sh" "$WORKSPACE/scripts/flipclaw-update.sh"`); without the wrapper, bash's stream-reader picks up the new file content at the old read offset and hits a `syntax error near unexpected token` on subsequent lines, aborting the update mid-flight before extension files, prompt templates, and the patch reconciliation step run. With `main()`, bash parses the entire script up front, so subsequent file reads can't desync. Caught on Ultra during an `e1` update from 3.2.5 → 3.2.7 — the run aborted at line 623 the first attempt and line 597 the second, leaving the install in a partial state. The same race exists for any updater path beyond a tiny script footprint, so this is a structural fix, not version-specific.
+
+### Known issue — upgrading from 3.2.5 / 3.2.6 to 3.2.8
+
+Existing installs on 3.2.5 or 3.2.6 cannot upgrade cleanly via `flipclaw-update.sh`. Their installed `apply_script` substitutes the old concrete refs (`/home/e1/agent` → `$WORKSPACE`, etc.), but the toolkit source moved to `{{WORKSPACE}}` / `{{PORT}}` / `{{AGENT_NAME}}` placeholders in 3.2.7. The on-disk `apply_script` patterns no longer match, so 3.2.7+ source files are written to disk with literal `{{WORKSPACE}}` strings and won't run. The self-modify race in 3.2.7 hid this from view because the updater aborted before printing affected files.
+
+Recommended path:
+
+1. Pre-warm any in-flight Claude Code sessions through the bridge so nothing is lost (`echo '{"session_id":"…","transcript_path":"…"}' | python3 $WORKSPACE/scripts/claude-code-bridge.py`).
+2. Re-run `install-memory.sh` against the existing workspace to refresh `apply_script` and the script set in one shot. The installer is idempotent for memory dirs, AGENTS.md, MEMORY.md, openclaw.json, and `.flipclaw-install.json` — it preserves user content and rewrites the script set with proper substitutions.
+3. Verify with `bash $WORKSPACE/scripts/claude-code-update-check.sh`.
+
+Once on 3.2.8, all subsequent updates run clean — apply_script substitutes the new placeholder format and the `main()` wrapper holds across self-replace.
+
+---
+
 ## [3.2.7] — 2026-04-26
 
 ### Fixed
